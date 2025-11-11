@@ -21,6 +21,7 @@ import { relayStatePrefix } from './utils';
 import * as redirect from './oauth/redirect';
 import * as allowed from './oauth/allowed';
 import { oidcClientConfig } from './oauth/oidc-client';
+import { extractDomainFromLoginHint, filterConnectionsByDomain } from './domain-utils';
 
 const deflateRawAsync = promisify(deflateRaw);
 
@@ -54,6 +55,7 @@ export class SSOHandler {
     entityId?: string;
     iss?: string;
     idp_hint?: string;
+    login_hint?: string; // NEW: Add login_hint parameter for domain-based routing
     idFedAppId?: string;
     fedType?: string;
     thirdPartyLogin?: { idpInitiatorType?: 'oidc' | 'saml'; iss?: string; target_link_uri?: string };
@@ -68,6 +70,7 @@ export class SSOHandler {
       tenant,
       product,
       idp_hint,
+      login_hint, // NEW: Extract login_hint
       entityId,
       tenants,
       idFedAppId = '',
@@ -117,6 +120,79 @@ export class SSOHandler {
 
     if (!connections || connections.length === 0) {
       throw new JacksonError(GENERIC_ERR_STRING, 403, noSSOConnectionErrMessage);
+    }
+
+    // NEW: Domain-based filtering for automatic IDP selection
+    // Check if domain-based routing is enabled (via environment variable)
+    const domainRoutingEnabled = process.env.ENABLE_DOMAIN_ROUTING !== 'false'; // Default: true
+    const strictDomainRouting = process.env.STRICT_DOMAIN_ROUTING === 'true'; // Default: false
+
+    if (domainRoutingEnabled && connections.length > 1) {
+      // In strict mode, require login_hint
+      if (strictDomainRouting && !login_hint) {
+        throw new JacksonError(
+          'Authentication requires email address',
+          400,
+          'missing_login_hint'
+        );
+      }
+
+      if (login_hint) {
+        const domain = extractDomainFromLoginHint(login_hint);
+
+        if (domain) {
+          const originalCount = connections.length;
+          const filteredConnections = filterConnectionsByDomain(connections, domain);
+
+          // Only use filtered connections if we found at least one match
+          if (filteredConnections.length > 0) {
+            connections = filteredConnections;
+
+            // Log successful domain filtering for debugging
+            if (this.opts.logger) {
+              this.opts.logger.info(`Domain routing: filtered from ${originalCount} to ${connections.length} connection(s) for domain '${domain}'`);
+            }
+
+            // In strict mode, require exactly one match
+            if (strictDomainRouting && connections.length > 1) {
+              // Log the ambiguous situation for debugging
+              if (this.opts.logger) {
+                this.opts.logger.warn(`Domain routing: Multiple SSO configurations found for domain '${domain}' in strict mode`);
+              }
+              throw new JacksonError(
+                'Multiple SSO configurations found',
+                400,
+                'ambiguous_domain'
+              );
+            }
+          } else {
+            // No matches found
+            if (strictDomainRouting) {
+              // Log the failed attempt for security monitoring
+              if (this.opts.logger) {
+                this.opts.logger.warn(`Domain routing: No SSO configuration for domain '${domain}' in strict mode`);
+              }
+              throw new JacksonError(
+                'No SSO configuration found',
+                404,
+                'domain_not_configured'
+              );
+            } else {
+              // Non-strict mode: Log and continue with all connections
+              if (this.opts.logger) {
+                this.opts.logger.info(`Domain routing: no connections found for domain '${domain}', showing all connections`);
+              }
+            }
+          }
+        } else if (strictDomainRouting) {
+          // login_hint provided but couldn't extract domain (invalid email format)
+          throw new JacksonError(
+            'Invalid email format',
+            400,
+            'invalid_login_hint'
+          );
+        }
+      }
     }
 
     // Third party login from an oidcProvider, here we match the connection from the iss param
