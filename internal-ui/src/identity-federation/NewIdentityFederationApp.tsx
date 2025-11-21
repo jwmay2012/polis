@@ -11,7 +11,7 @@ import { ItemList } from '@boxyhq/react-ui/shared';
 
 type NewIdentityFederationApp = Pick<
   IdentityFederationApp,
-  'name' | 'tenant' | 'product' | 'acsUrl' | 'entityId' | 'tenants' | 'mappings' | 'type' | 'redirectUrl'
+  'name' | 'tenant' | 'product' | 'acsUrl' | 'entityId' | 'tenants' | 'mappings' | 'type' | 'redirectUrl' | 'publicRedirectUrls'
 >;
 
 export const NewIdentityFederationApp = ({
@@ -40,6 +40,7 @@ export const NewIdentityFederationApp = ({
     entityId: '',
     tenants: [],
     mappings: [],
+    publicRedirectUrls: [],
   };
 
   if (excludeFields) {
@@ -183,6 +184,18 @@ export const NewIdentityFederationApp = ({
                 inputType={'url'}
                 currentlist={formik.values.redirectUrl || ['']}
                 fieldName='redirectUrl'
+                handleItemListUpdate={(fieldName, newList) => formik.setFieldValue(fieldName, newList)}
+              />
+            </label>
+          )}
+          {connectionIsOIDC && (
+            <label className='form-control w-full'>
+              <ItemList
+                classNames={{ label: 'label', input: 'input input-bordered input-sm w-full' }}
+                label={t('bui-fs-public-redirect-urls')}
+                inputType={'url'}
+                currentlist={formik.values.publicRedirectUrls || ['']}
+                fieldName='publicRedirectUrls'
                 handleItemListUpdate={(fieldName, newList) => formik.setFieldValue(fieldName, newList)}
               />
             </label>

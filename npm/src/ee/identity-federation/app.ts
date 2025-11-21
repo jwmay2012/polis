@@ -27,6 +27,7 @@ type NewAppParams = Pick<
   | 'mappings'
   | 'type'
   | 'redirectUrl'
+  | 'publicRedirectUrls'
   | 'samlAudienceOverride'
 > & {
   logoUrl?: string;
@@ -160,6 +161,7 @@ export class App {
     name,
     type,
     redirectUrl,
+    publicRedirectUrls,
     tenant,
     product,
     acsUrl,
@@ -233,6 +235,7 @@ export class App {
       id,
       type,
       redirectUrl,
+      publicRedirectUrls,
       name,
       tenant,
       product,
@@ -463,6 +466,10 @@ export class App {
 
     if ('redirectUrl' in params) {
       toUpdate['redirectUrl'] = params.redirectUrl;
+    }
+
+    if ('publicRedirectUrls' in params) {
+      toUpdate['publicRedirectUrls'] = params.publicRedirectUrls;
     }
 
     if ('acsUrl' in params) {
