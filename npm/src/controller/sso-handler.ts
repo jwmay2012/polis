@@ -127,7 +127,7 @@ export class SSOHandler {
     const domainRoutingEnabled = process.env.ENABLE_DOMAIN_ROUTING !== 'false'; // Default: true
     const strictDomainRouting = process.env.STRICT_DOMAIN_ROUTING === 'true'; // Default: false
 
-    if (domainRoutingEnabled && connections.length > 1) {
+    if (domainRoutingEnabled) {
       // In strict mode, require login_hint
       if (strictDomainRouting && !login_hint) {
         throw new JacksonError(
