@@ -38,6 +38,7 @@ const oidc = {
       oidcMetadata = { issuer: '' },
       oidcClientId = '',
       oidcClientSecret = '',
+      oidcPublicUpstreamRedirectUri,
     } = body;
 
     let connectionClientSecret: string;
@@ -75,6 +76,11 @@ const oidc = {
       record.oidcProvider.discoveryUrl = oidcDiscoveryUrl;
     } else if (oidcMetadata.issuer) {
       record.oidcProvider.metadata = oidcMetadata;
+    }
+
+    // Public upstream redirect URI for mobile/SPA clients
+    if (oidcPublicUpstreamRedirectUri) {
+      record.oidcProvider.publicUpstreamRedirectUri = oidcPublicUpstreamRedirectUri;
     }
 
     // extract provider
@@ -127,6 +133,7 @@ const oidc = {
       oidcMetadata,
       oidcClientId,
       oidcClientSecret,
+      oidcPublicUpstreamRedirectUri,
       ...clientInfo
     } = body;
 
@@ -184,6 +191,16 @@ const oidc = {
         oidcProvider.provider = providerName ? providerName : 'Unknown';
         // Remove previous discoveryUrl if any
         delete oidcProvider.discoveryUrl;
+      }
+
+      // Update public upstream redirect URI for mobile/SPA clients
+      if (oidcPublicUpstreamRedirectUri !== undefined) {
+        if (oidcPublicUpstreamRedirectUri === '' || oidcPublicUpstreamRedirectUri === null) {
+          // Allow clearing the value
+          delete oidcProvider.publicUpstreamRedirectUri;
+        } else {
+          oidcProvider.publicUpstreamRedirectUri = oidcPublicUpstreamRedirectUri;
+        }
       }
     }
 

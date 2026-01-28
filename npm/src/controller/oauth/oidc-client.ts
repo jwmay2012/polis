@@ -87,7 +87,7 @@ export const oidcClientConfig = async ({
   discoveryUrl?: string;
   metadata?: ServerMetadata;
   clientId: string;
-  clientSecret: string;
+  clientSecret?: string; // Optional for public clients (mobile/SPA)
   ssoTraces: { instance: SSOTracesInstance; context: SSOTrace['context'] };
 }): Promise<Configuration> => {
   const url = discoveryUrl ? new URL(discoveryUrl) : new URL(metadata!.issuer);
