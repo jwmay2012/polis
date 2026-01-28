@@ -16,7 +16,7 @@ import type {
 import { getDefaultCertificate } from '../saml/x509';
 import * as dbutils from '../db/utils';
 import { JacksonError } from './error';
-import { dynamicImport, GENERIC_ERR_STRING, IndexNames } from './utils';
+import { dynamicImport, GENERIC_ERR_STRING, IndexNames, isConnectionActive } from './utils';
 import { relayStatePrefix } from './utils';
 import * as redirect from './oauth/redirect';
 import * as allowed from './oauth/allowed';
@@ -116,6 +116,11 @@ export class SSOHandler {
       const result = await this.connection.getByIndex({ name: IndexNames.EntityID, value: entityId });
 
       connections = result.data;
+    }
+
+    // Filter out inactive connections before any routing logic
+    if (connections) {
+      connections = connections.filter(isConnectionActive);
     }
 
     if (!connections || connections.length === 0) {
