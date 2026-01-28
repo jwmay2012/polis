@@ -73,7 +73,7 @@ const PublicClientSettings = ({
           value={publicUpstreamRedirectUri}
           onChange={(e) => setPublicUpstreamRedirectUri(e.target.value)}
           placeholder='https://sso.example.com/api/oauth/oidc?client=mobile'
-          className='w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
+          className='w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
         />
         <p className='mt-1 text-xs text-gray-500 dark:text-gray-400'>
           {t('public_upstream_redirect_uri_hint')}

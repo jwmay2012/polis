@@ -261,17 +261,19 @@ export class OAuthController implements IOAuthController {
         }
       }
 
-      // Detect if this is a public client (mobile/SPA) based on redirect_uri
-      isPublicClient = fedApp?.publicRedirectUrls?.includes(redirect_uri) || false;
-
-      // Determine upstream redirect_uri: use public version if client is public and connection has one configured
+      // Determine if public client flow should be used
+      // Requires BOTH: client redirect_uri is in publicRedirectUrls AND connection has publicUpstreamRedirectUri configured
+      const clientIsPublic = fedApp?.publicRedirectUrls?.includes(redirect_uri) || false;
       const publicUpstreamRedirectUri = connectionIsOIDC
         ? (connection as OIDCSSORecord).oidcProvider?.publicUpstreamRedirectUri
         : undefined;
-      upstreamRedirectUri =
-        isPublicClient && publicUpstreamRedirectUri
-          ? publicUpstreamRedirectUri
-          : this.opts.externalUrl + this.opts.oidcPath;
+
+      // Only use public client flow if both conditions are met
+      isPublicClient = clientIsPublic && !!publicUpstreamRedirectUri;
+
+      upstreamRedirectUri = isPublicClient
+        ? publicUpstreamRedirectUri!
+        : this.opts.externalUrl + this.opts.oidcPath;
 
       if (!isConnectionActive(connection)) {
         throw new JacksonError(GENERIC_ERR_STRING, 403, 'SSO connection is deactivated.');
