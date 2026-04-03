@@ -609,10 +609,12 @@ export class OAuthController implements IOAuthController {
           redirectUrl = redirect.success(ssoUrl, {
             RelayState: relayState,
             SAMLRequest: Buffer.from(await deflateRawAsync(samlReq.request)).toString('base64'),
+            login_hint: login_hint || undefined,
           });
         } else {
           // HTTP POST binding
-          authorizeForm = saml.createPostForm(ssoUrl, [
+          const postUrl = login_hint ? redirect.success(ssoUrl, { login_hint }) : ssoUrl;
+          authorizeForm = saml.createPostForm(postUrl, [
             { name: 'RelayState', value: relayState },
             { name: 'SAMLRequest', value: Buffer.from(samlReq.request).toString('base64') },
           ]);
