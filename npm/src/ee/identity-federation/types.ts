@@ -13,6 +13,7 @@ export type IdentityFederationApp = {
   clientID?: string;
   clientSecret?: string;
   redirectUrl?: string[] | string;
+  publicRedirectUrls?: string[]; // Redirect URIs that are public clients (mobile, SPA)
   name: string;
   tenant: string;
   product: string;
