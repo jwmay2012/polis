@@ -145,6 +145,7 @@ export class OAuthController implements IOAuthController {
           tenant,
           product,
           idp_hint,
+          login_hint, // Pass login_hint for domain-based routing
           authFlow: 'oauth',
           originalParams: { ...body },
         });
@@ -185,6 +186,7 @@ export class OAuthController implements IOAuthController {
             tenant,
             product,
             idp_hint,
+            login_hint, // Pass login_hint for domain-based routing
             authFlow: 'oauth',
             originalParams: { ...body },
           });
@@ -209,6 +211,7 @@ export class OAuthController implements IOAuthController {
               tenant: fedApp.tenant,
               product: fedApp.product,
               idp_hint,
+              login_hint, // Pass login_hint for domain-based routing
               authFlow: 'oauth',
               originalParams: { ...body },
               tenants: fedApp.tenants,
@@ -724,6 +727,7 @@ export class OAuthController implements IOAuthController {
       if (isIdPFlow) {
         const response = await this.ssoHandler.resolveConnection({
           idp_hint,
+          login_hint: session?.requested?.login_hint, // Get login_hint from session if available
           authFlow: 'idp-initiated',
           entityId: issuer,
           originalParams: { SAMLResponse },
