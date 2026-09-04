@@ -125,6 +125,8 @@ export class OAuthController implements IOAuthController {
     let connectionIsSAML;
     let connectionIsOIDC;
     let protocol;
+    let isPublicClient = false; // True if client redirect_uri is in publicRedirectUrls (mobile/SPA)
+    let upstreamRedirectUri: string; // Redirect URI to use when calling upstream IdP
     const login_type = 'sp-initiated';
 
     try {
@@ -270,6 +272,20 @@ export class OAuthController implements IOAuthController {
           throw new JacksonError('Redirect URL is not allowed.', 403);
         }
       }
+
+      // Determine if public client flow should be used
+      // Requires BOTH: client redirect_uri is in publicRedirectUrls AND connection has publicUpstreamRedirectUri configured
+      const clientIsPublic = fedApp?.publicRedirectUrls?.includes(redirect_uri) || false;
+      const publicUpstreamRedirectUri = connectionIsOIDC
+        ? (connection as OIDCSSORecord).oidcProvider?.publicUpstreamRedirectUri
+        : undefined;
+
+      // Only use public client flow if both conditions are met
+      isPublicClient = clientIsPublic && !!publicUpstreamRedirectUri;
+
+      upstreamRedirectUri = isPublicClient
+        ? publicUpstreamRedirectUri!
+        : this.opts.externalUrl + this.opts.oidcPath;
 
       if (!isConnectionActive(connection)) {
         throw new JacksonError(GENERIC_ERR_STRING, 403, 'SSO connection is deactivated.');
@@ -508,7 +524,7 @@ export class OAuthController implements IOAuthController {
           code_challenge_method: 'S256',
           state: relayState,
           nonce: oidcNonce,
-          redirect_uri: this.opts.externalUrl + this.opts.oidcPath,
+          redirect_uri: upstreamRedirectUri,
           ...paramsToForward,
         }).href;
       } catch (err: unknown) {
@@ -587,6 +603,8 @@ export class OAuthController implements IOAuthController {
         code_challenge,
         code_challenge_method,
         requested,
+        isPublicClient, // True if client redirect_uri is a public client (mobile/SPA)
+        upstreamRedirectUri, // The redirect_uri used when calling upstream IdP
         oidcFederated: fedApp
           ? {
               redirectUrl: fedApp.redirectUrl,
@@ -1086,13 +1104,20 @@ export class OAuthController implements IOAuthController {
     const { discoveryUrl, metadata, clientId, clientSecret } = oidcConnection.oidcProvider;
     const { ssoTraces } = this;
     let tokens: AuthorizationCodeGrantResult | undefined = undefined;
+
+    // Get public client info from session (set during authorize)
+    const sessionIsPublicClient = session.isPublicClient || false;
+    const sessionUpstreamRedirectUri =
+      session.upstreamRedirectUri || this.opts.externalUrl + this.opts.oidcPath;
+
     try {
       const client = (await dynamicImport('openid-client')) as typeof import('openid-client');
       const oidcConfig = await oidcClientConfig({
         discoveryUrl,
         metadata,
         clientId,
-        clientSecret,
+        // For public clients (mobile/SPA), don't send client_secret - rely on PKCE
+        clientSecret: sessionIsPublicClient ? undefined : clientSecret,
         ssoTraces: {
           instance: ssoTraces,
           context: {
@@ -1111,9 +1136,8 @@ export class OAuthController implements IOAuthController {
           },
         },
       });
-      const currentUrl = new URL(
-        this.opts.externalUrl + this.opts.oidcPath + '?' + new URLSearchParams(callbackParams)
-      );
+      // Use the upstream redirect_uri that was used during authorize (must match for token exchange)
+      const currentUrl = new URL(sessionUpstreamRedirectUri + '?' + new URLSearchParams(callbackParams));
       tokens = await client.authorizationCodeGrant(oidcConfig, currentUrl, {
         pkceCodeVerifier: session.oidcCodeVerifier,
         expectedNonce: session.oidcNonce,

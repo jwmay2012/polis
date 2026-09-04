@@ -55,6 +55,7 @@ export interface SAMLSSOConnectionWithEncodedMetadata extends SAMLSSOConnection 
 interface OIDCSSOConnection extends SSOConnection {
   oidcClientId: string;
   oidcClientSecret: string;
+  oidcPublicUpstreamRedirectUri?: string; // Redirect URI for public clients (mobile/SPA), registered in IdP as mobile platform
 }
 
 export interface OIDCSSOConnectionWithMetadata extends OIDCSSOConnection {
@@ -95,6 +96,7 @@ export interface OIDCSSORecord extends SSOConnection {
     metadata?: ServerMetadata;
     clientId: string;
     clientSecret: string;
+    publicUpstreamRedirectUri?: string; // Redirect URI for public clients (mobile/SPA), registered in IdP as mobile platform
   };
   deactivated?: boolean;
 }
@@ -143,6 +145,7 @@ export type UpdateOIDCConnectionParams = UpdateConnectionParams & {
   oidcMetadata?: ServerMetadata;
   oidcClientId?: string;
   oidcClientSecret?: string;
+  oidcPublicUpstreamRedirectUri?: string; // Redirect URI for public clients (mobile/SPA), registered in IdP as mobile platform
 };
 
 export interface IConnectionAPIController {

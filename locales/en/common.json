@@ -259,5 +259,12 @@
   "bui-sl-link-expired": "This link has expired",
   "bui-sl-link-expire-on": "This link will expire on {{expiresAt}}.",
   "bui-sl-share-link-info": "Share this link with your customer to setup their service",
-  "bui-sl-webhook-url": "Webhook URL"
+  "bui-sl-webhook-url": "Webhook URL",
+  "public_client_settings_title": "Public Client Settings (Mobile/SPA)",
+  "public_client_settings_description": "Configure a separate upstream redirect URI for public clients (mobile apps, SPAs). This URI should be registered in the IdP under \"Mobile and desktop applications\" platform to bypass browser-based Conditional Access restrictions.",
+  "public_upstream_redirect_uri": "Public Upstream Redirect URI",
+  "public_upstream_redirect_uri_hint": "Leave empty to use the default redirect URI for all clients.",
+  "save_public_client_settings": "Save Public Client Settings",
+  "saving": "Saving...",
+  "error_saving_public_client_settings": "Failed to save public client settings"
 }
