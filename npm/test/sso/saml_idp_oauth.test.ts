@@ -759,6 +759,54 @@ tap.test('token()', async (t) => {
 });
 
 tap.test('IdP initiated flow', async (t) => {
+  t.test('sessionless codes require confidential client authentication', async (t) => {
+    const rawResponse = await fs.readFile(path.join(__dirname, '/data/saml_response'), 'utf8');
+    const responseBody = {
+      SAMLResponse: rawResponse,
+    };
+    const stubValidate = sinon.stub(saml, 'validate').resolves({
+      audience: '',
+      claims: { id: 'id', firstName: 'john', lastName: 'doe', email: 'johndoe@example.com' },
+      issuer: '',
+      sessionIndex: '',
+    });
+
+    const stubRandomBytes = stubRandomBytesAll();
+
+    const { redirect_url } = await idpEnabledOAuthController.samlResponse(<SAMLResponsePayload>responseBody);
+    t.equal(new URLSearchParams(new URL(redirect_url!).search).get('code'), clientCode);
+
+    const unauthenticatedRequests: Array<Partial<OAuthTokenReq>> = [
+      { grant_type: 'authorization_code', code: clientCode },
+      {
+        grant_type: 'authorization_code',
+        code: clientCode,
+        code_verifier: 'a-verifier-cannot-make-a-sessionless-code-public',
+      },
+    ];
+    for (const body of unauthenticatedRequests) {
+      try {
+        await idpEnabledOAuthController.token(body as OAuthTokenReq);
+        t.fail('sessionless code redemption unexpectedly succeeded without client authentication');
+      } catch (err) {
+        const { message, statusCode } = err as JacksonError;
+        t.equal(message, 'Please specify client_id and client_secret');
+        t.equal(statusCode, 401);
+      }
+    }
+
+    const tokenRes = await idpEnabledOAuthController.token(<OAuthTokenReq>{
+      grant_type: 'authorization_code',
+      code: clientCode,
+      client_id: 'dummy',
+      client_secret: 'TOP-SECRET',
+    });
+    t.ok(tokenRes.access_token, 'the same code redeems with valid confidential client authentication');
+
+    stubRandomBytes.restore();
+    stubValidate.restore();
+  });
+
   t.test('authentication should fail with encoded client_id and wrong client_secret_verifier', async (t) => {
     const rawResponse = await fs.readFile(path.join(__dirname, '/data/saml_response'), 'utf8');
     const responseBody = {

@@ -13,7 +13,10 @@ import { ItemList } from '@boxyhq/react-ui/shared';
 import { CopyToClipboardButton } from '../shared/InputWithCopyButton';
 import { IconButton } from '../shared/IconButton';
 
-type EditApp = Pick<IdentityFederationApp, 'name' | 'acsUrl' | 'tenants' | 'redirectUrl'>;
+type EditApp = Pick<
+  IdentityFederationApp,
+  'name' | 'acsUrl' | 'tenants' | 'redirectUrl' | 'publicRedirectUrls'
+>;
 
 export const Edit = ({
   app,
@@ -41,6 +44,7 @@ export const Edit = ({
       acsUrl: app.acsUrl || '',
       tenants: app.tenants || [],
       redirectUrl: app.redirectUrl || [],
+      publicRedirectUrls: app.publicRedirectUrls || [],
     },
     onSubmit: async (values) => {
       const rawResponse = await fetch(urls.patch, {
@@ -203,6 +207,18 @@ export const Edit = ({
                       inputType={'url'}
                       currentlist={formik.values.redirectUrl || ['']}
                       fieldName='redirectUrl'
+                      handleItemListUpdate={(fieldName, newList) => formik.setFieldValue(fieldName, newList)}
+                    />
+                  </label>
+                )}
+                {connectionIsOIDC && (
+                  <label className='form-control w-full'>
+                    <ItemList
+                      classNames={{ label: 'label', input: 'input input-bordered input-sm w-full' }}
+                      label={t('bui-fs-public-redirect-urls')}
+                      inputType={'url'}
+                      currentlist={formik.values.publicRedirectUrls || ['']}
+                      fieldName='publicRedirectUrls'
                       handleItemListUpdate={(fieldName, newList) => formik.setFieldValue(fieldName, newList)}
                     />
                   </label>

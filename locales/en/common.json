@@ -238,6 +238,7 @@
   "bui-sl-default-redirect-url": "Default redirect URL",
   "bui-sl-allowed-redirect-urls": "Allowed redirect URLs (newline separated)",
   "bui-sl-allowed-redirect-urls-new": "Allowed redirect URLs",
+  "bui-fs-public-redirect-urls": "Public Redirect URIs (for mobile apps and SPAs)",
   "bui-sl-sso-desc": "Create a unique Setup Link to share with your customers so they can set Enterprise SSO connection with your app.",
   "bui-sl-dsync-desc": "Create a unique Setup Link to share with your customers so they can set Directory Sync connection with your app.",
   "bui-sl-dsync-name-placeholder": "Acme Directory",
