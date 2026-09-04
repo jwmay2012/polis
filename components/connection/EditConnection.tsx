@@ -5,6 +5,7 @@ import { LinkBack } from '@boxyhq/internal-ui';
 import type { OIDCSSORecord, SAMLSSORecord } from '@boxyhq/saml-jackson';
 import { EditSAMLConnection, EditOIDCConnection } from '@boxyhq/react-ui/sso';
 import { BOXYHQ_UI_CSS } from '@components/styles';
+import PublicClientSettings from './PublicClientSettings';
 
 type EditProps = {
   connection: SAMLSSORecord | OIDCSSORecord;
@@ -135,6 +136,15 @@ const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: 
             />
           )}
         </div>
+        {/* Public Client Settings for OIDC connections */}
+        {connectionIsOIDC && !setupLinkToken && (
+          <PublicClientSettings
+            connectionClientId={connection.clientID}
+            connectionClientSecret={connection.clientSecret}
+            apiUrl={apiUrl}
+            initialValue={(connection as OIDCSSORecord).oidcProvider?.publicUpstreamRedirectUri || ''}
+          />
+        )}
       </div>
     </>
   );
