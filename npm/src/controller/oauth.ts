@@ -638,10 +638,14 @@ export class OAuthController implements IOAuthController {
             RelayState: relayState,
             SigAlg: sigAlg,
             Signature: signature,
+            // Not part of the signed query (SAMLRequest, RelayState, SigAlg);
+            // IdPs read it as a hint only.
+            login_hint: login_hint || undefined,
           });
         } else {
           // HTTP-POST: signature is already embedded in the XML
-          authorizeForm = saml.createPostForm(ssoUrl, [
+          const postUrl = login_hint ? redirect.success(ssoUrl, { login_hint }) : ssoUrl;
+          authorizeForm = saml.createPostForm(postUrl, [
             { name: 'RelayState', value: relayState },
             { name: 'SAMLRequest', value: Buffer.from(samlReq.request).toString('base64') },
           ]);
