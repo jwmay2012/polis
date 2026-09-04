@@ -184,7 +184,7 @@ export class EventProcessor {
     isJobRunning = true;
 
     try {
-      this._process();
+      await this._process();
     } catch (e: any) {
       this.opts.logger.error(' Error processing webhooks batch:', e);
     }
