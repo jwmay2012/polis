@@ -590,6 +590,7 @@ export class OAuthController implements IOAuthController {
         oidcFederated: fedApp
           ? {
               redirectUrl: fedApp.redirectUrl,
+              publicRedirectUrls: fedApp.publicRedirectUrls || [], // List of public client redirect URIs
               id: fedApp.id,
               clientID: fedApp.clientID,
               clientSecret: fedApp.clientSecret,
@@ -1365,6 +1366,14 @@ export class OAuthController implements IOAuthController {
         }
       }
 
+      // A sessionless code comes from an IdP-initiated flow. It cannot be a
+      // configured public client because no authorization session exists to
+      // bind PKCE or an allowlisted public redirect URI. Require confidential
+      // client authentication before considering any token exchange branch.
+      if (!codeVal.session && (!client_id || !client_secret)) {
+        throw new JacksonError('Please specify client_id and client_secret', 401);
+      }
+
       if (codeVal.session?.code_challenge) {
         // PKCE flow
         let cv = code_verifier;
@@ -1380,13 +1389,35 @@ export class OAuthController implements IOAuthController {
           throw new JacksonError('Invalid code_verifier', 401);
         }
 
-        // For Federation flow, we need to verify the client_secret
+        // For Federation flow, verify client credentials
+        // Public clients (mobile/SPA) are explicitly configured via publicRedirectUrls
+        // Confidential clients (web backends) require client_secret
         if (client_id?.startsWith(`${clientIDFederatedPrefix}${clientIDOIDCPrefix}`)) {
-          if (
-            client_id !== codeVal.session?.oidcFederated?.clientID ||
-            client_secret !== codeVal.session?.oidcFederated?.clientSecret
-          ) {
-            throw new JacksonError('Invalid client_id or client_secret', 401);
+          // Always validate client_id
+          if (client_id !== codeVal.session?.oidcFederated?.clientID) {
+            throw new JacksonError('Invalid client_id', 401);
+          }
+
+          // Check if this redirect URI is explicitly marked as public client
+          const redirectUri = codeVal.requested?.redirect_uri || redirect_uri;
+          const publicRedirectUrls = codeVal.session?.oidcFederated?.publicRedirectUrls || [];
+          const isPublicClient = publicRedirectUrls.includes(redirectUri);
+
+          if (isPublicClient) {
+            // Public client (mobile app, SPA): Must use PKCE, no client_secret required
+            if (!codeVal.session?.code_challenge) {
+              throw new JacksonError('Public clients must use PKCE', 401);
+            }
+            // PKCE already validated above at lines 1235-1248
+          } else {
+            // Confidential client (web backend): Must provide client_secret
+            if (!client_secret) {
+              throw new JacksonError('Confidential clients must provide client_secret', 401);
+            }
+            if (client_secret !== codeVal.session?.oidcFederated?.clientSecret) {
+              throw new JacksonError('Invalid client_secret', 401);
+            }
+            // PKCE is optional but recommended for confidential clients
           }
         }
       } else if (client_id && client_secret) {
