@@ -1,5 +1,6 @@
 import tap from 'tap';
 import sinon from 'sinon';
+import axios from 'axios';
 
 import users from '../data/users';
 import requests from '../data/user-requests';
@@ -110,6 +111,7 @@ tap.test('Event batching', async (t) => {
 
     const sandbox = sinon.createSandbox();
     const axiosPostStub = sandbox.stub(axiosInstance, 'post').resolves({ status: 200 });
+    sandbox.stub(axios, 'create').returns(axiosInstance);
 
     await directorySync.events.batch.process();
 
