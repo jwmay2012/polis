@@ -55,6 +55,14 @@ import { Encrypted } from '../typings';
 
 const deflateRawAsync = promisify(deflateRaw);
 
+const escapeHTMLAttribute = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
 function encrypt(val: any) {
   const genKey = crypto.randomBytes(32);
   const hexKey = genKey.toString('hex');
@@ -638,13 +646,27 @@ export class OAuthController implements IOAuthController {
             RelayState: relayState,
             SigAlg: sigAlg,
             Signature: signature,
+            // Not part of the signed query (SAMLRequest, RelayState, SigAlg);
+            // IdPs read it as a hint only.
+            login_hint: login_hint || undefined,
           });
         } else {
           // HTTP-POST: signature is already embedded in the XML
+          const postUrl = login_hint ? redirect.success(ssoUrl, { login_hint }) : ssoUrl;
           authorizeForm = saml.createPostForm(ssoUrl, [
             { name: 'RelayState', value: relayState },
             { name: 'SAMLRequest', value: Buffer.from(samlReq.request).toString('base64') },
           ]);
+          if (postUrl !== ssoUrl) {
+            // saml20's form helper calls encodeURI on its action. Passing the
+            // URLSearchParams-encoded postUrl to it would encode `%40` again
+            // as `%2540`, so replace the base action with the already encoded,
+            // HTML-escaped URL after the form is created.
+            authorizeForm = authorizeForm.replace(
+              `action="${encodeURI(ssoUrl)}"`,
+              `action="${escapeHTMLAttribute(postUrl)}"`
+            );
+          }
         }
         return { redirect_url: redirectUrl, authorize_form: authorizeForm };
       }
