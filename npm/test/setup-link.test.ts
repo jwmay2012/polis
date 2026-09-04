@@ -4,6 +4,10 @@ import { ISetupLinkController } from '../src';
 
 let setupLinkController: ISetupLinkController;
 const product = 'jackson';
+const dsyncWebhook = {
+  webhook_url: 'https://example.com/webhook',
+  webhook_secret: 'webhook-secret',
+};
 
 tap.before(async () => {
   const jackson = await (await import('../src/index')).default(jacksonOptions);
@@ -26,6 +30,7 @@ tap.test('Setup link controller', async (t) => {
       tenant: 'tenant-1',
       product,
       service: 'dsync',
+      ...dsyncWebhook,
     });
 
     t.ok(setupLink);
@@ -39,6 +44,7 @@ tap.test('Setup link controller', async (t) => {
       product,
       service: 'dsync',
       expiryDays: 5,
+      ...dsyncWebhook,
     });
 
     t.ok(setupLink);
@@ -60,6 +66,7 @@ tap.test('Setup link controller', async (t) => {
       tenant: 'tenant-3',
       product,
       service: 'dsync',
+      ...dsyncWebhook,
     });
 
     t.ok(setupLink);
@@ -78,7 +85,7 @@ tap.test('Setup link controller', async (t) => {
     });
 
     t.ok(setupLink);
-    t.match(setupLink.redirectUrl, ['https://acme.com', 'https://acme.com/login']);
+    t.same(JSON.parse(setupLink.redirectUrl as string), ['https://acme.com', 'https://acme.com/login']);
     t.match(setupLink.defaultRedirectUrl, 'https://acme.com');
   });
 
