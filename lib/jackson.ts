@@ -3,6 +3,7 @@ import type { SAMLJackson } from '@boxyhq/saml-jackson';
 import jackson from '@boxyhq/saml-jackson';
 import { jacksonOptions } from '@lib/env';
 import { logger } from './logger';
+import { detachedFromRequest } from '../npm/src/logging/context';
 
 const g = global as any;
 
@@ -18,7 +19,9 @@ const jacksonOptionsWithLogger = {
 export default async function init() {
   if (!g.jacksonInstance) {
     g.jacksonInstance = new Promise((resolve, reject) => {
-      jackson(jacksonOptionsWithLogger).then(resolve).catch(reject);
+      detachedFromRequest(() => jackson(jacksonOptionsWithLogger))
+        .then(resolve)
+        .catch(reject);
     });
   }
 

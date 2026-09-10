@@ -1,9 +1,10 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import jackson from '@lib/jackson';
 import { extractAuthToken } from '@lib/auth';
+import { withRequestLogging } from '@lib/request-logging';
 import { logger } from '@lib/logger';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     if (req.method !== 'GET') {
       throw { message: 'Method not allowed', statusCode: 405 };
@@ -22,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (!token) {
-      logger.error('Userinfo error: token not found in request');
+      logger.info('Userinfo request has no access token');
       res.status(401).json({ message: 'Unauthorized' });
       return;
     }
@@ -31,9 +32,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     res.json(profile);
   } catch (err: any) {
-    logger.error(err, 'Userinfo error');
+    logger.error({ err }, 'Unable to handle OAuth request');
     const { message, statusCode = 500 } = err;
 
     res.status(statusCode).json({ message });
   }
 }
+
+export default withRequestLogging(handler);

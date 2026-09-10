@@ -4,6 +4,7 @@ import { IndexNames } from '../controller/utils';
 import { keyFromParts } from '../db/utils';
 import type { SSOTrace, Trace } from './types';
 import { JacksonError } from '../controller/error';
+import { bindContext, contextFields, contextualLogger } from '../logging/context';
 
 const INTERVAL_1_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const INTERVAL_1_DAY_MS = 24 * 60 * 60 * 1000;
@@ -15,7 +16,7 @@ class SSOTraces {
 
   constructor({ tracesStore, opts }) {
     this.tracesStore = tracesStore;
-    this.opts = opts;
+    this.opts = { ...opts, logger: contextualLogger(opts.logger) };
     // Clean up stale traces at the start
     this.cleanUpStaleTraces();
     // Set timer to run every day
@@ -30,7 +31,8 @@ class SSOTraces {
     }
 
     try {
-      const { context } = payload;
+      // Preserve the existing report's tenant/product indexing semantics.
+      const context = { ...contextFields(), ...payload.context };
 
       if (this.opts.ssoTraces?.redact) {
         SSO_TRACES_REDACT_KEYS.forEach((key) => delete context[key]);
@@ -39,7 +41,7 @@ class SSOTraces {
       const traceId: string = await generateMnemonic();
       // If timestamp present in payload use that value, else generate the current timestamp
       const timestamp = typeof payload.timestamp === 'number' ? payload.timestamp : Date.now();
-      const traceValue: Trace = { ...payload, traceId, timestamp };
+      const traceValue: Trace = { ...payload, context, traceId, timestamp };
       const { tenant, product, clientID } = context;
 
       const indices = [
@@ -63,9 +65,11 @@ class SSOTraces {
         .map(({ name, value }) => ({ name, value }));
 
       await this.tracesStore.put(traceId, traceValue, ...indices);
+      bindContext({ polis_error_report_id: traceId });
+      this.opts.logger.info('Saved SSO error report', { polis_error_report_id: traceId });
       return traceId;
     } catch (err: unknown) {
-      this.opts.logger.error(`Failed to save trace`, err);
+      this.opts.logger.warn('Unable to save SSO error report', err);
     }
   }
 

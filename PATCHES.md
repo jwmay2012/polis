@@ -18,7 +18,8 @@ Upstream itself uses `vYY.Q.N` (year, quarter, release number), so the
 four-digit year keeps this fork's tags visibly distinct from upstream's.
 
 Current base: upstream `main` at `e13ed6541ec026dc37243f975b6d88be9488b687`
-(2026-07-27), on branch `release/2026.09.11`.
+(2026-07-27), on branch `release/2026.09.16`. This release refines the logging
+patch on the same reviewed upstream base; older release branches and tags remain unchanged.
 
 ## The series
 
@@ -78,6 +79,16 @@ Each patch is one commit. They apply in this order.
    Deployments must preload a Node SDK and enable its metrics exporter;
    without one, instruments are no-ops. Files: `lib/jackson.ts`, `.env.example`,
    `npm/test/api/metrics_sdk.test.ts`.
+8. **Extend existing logging with request context, native errors and SSO continuity.**
+   Pino and the library's existing logger receive automatic context, source/error
+   detail and credential redaction. Shared API boundaries record HTTP details and
+   duration. Business code uses ordinary English messages and resolved facts, not
+   an event/category taxonomy. One span per OAuth operation and native-value
+   fingerprints connect authorize/callback/code/token/userinfo; optional encrypted
+   continuation never enters token claims or public responses. Auth decisions,
+   routing priority and responses are unchanged. See `TELEMETRY.md`. Main files:
+   `npm/src/logging/`, `npm/src/controller/log-context.ts`, `lib/logger.ts`,
+   `lib/request-logging.ts`, and `npm/test/sso/logging.test.ts`.
 
 Invariants the series must keep, and the tests that hold them:
 
@@ -112,6 +123,23 @@ Invariants the series must keep, and the tests that hold them:
   Kubernetes resource identity intact. `npm/test/api/metrics_sdk.test.ts`
 - The upstream `idp_hint` scope check and the provider-error early return in
   the OIDC callback are upstream behavior and must survive every rebase.
+- Telemetry is isolated per request, retains legacy-record compatibility,
+  never copies request IDs across redirects, and never changes authentication
+  results when a logger fails. Native fingerprints cover full wire codes
+  and tokens. A failed SSO callback can have an error-marked semantic span
+  while its unchanged HTTP response is 302. `npm/test/sso/logging.test.ts`
+- Per-call HTTP facts do not leak into later failures; process-lifetime
+  initialization detaches both contexts; mapped profiles are marked validated
+  only after their checks complete. Federation and SAML fixture flows verify
+  the real controller's metadata continuity. File logging retains the same
+  context and error behavior. `npm/test/sso/logging.test.ts`,
+  `npm/test/sso/public_client.test.ts`, `npm/test/sso/saml_idp_oauth.test.ts`,
+  `npm/test/api/file_logger.test.ts`
+- HTTP observation preserves response bytes, captures direct-write headers and
+  disconnected-response timing, and redacts bodies, credentials and errors without
+  mutating application objects. Pino child bindings and formatted messages pass
+  through the same redaction. `npm/test/api/request_logging.test.ts`,
+  `npm/test/api/file_logger.test.ts`
 
 Upstream status: none of the patches is upstream. Patches 1, 4, 5, and 6 are
 generic enough to propose after this release is accepted.
