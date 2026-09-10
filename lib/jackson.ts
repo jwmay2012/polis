@@ -2,7 +2,6 @@ import type { SAMLJackson } from '@boxyhq/saml-jackson';
 
 import jackson from '@boxyhq/saml-jackson';
 import { jacksonOptions } from '@lib/env';
-import '@lib/metrics';
 import { logger } from './logger';
 
 const g = global as any;

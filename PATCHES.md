@@ -71,6 +71,13 @@ Each patch is one commit. They apply in this order.
    fixtures supply the webhook fields now required for Directory Sync links
    and verify the serialized SSO redirect list in its stored representation.
    File: `npm/test/setup-link.test.ts`.
+7. **Use the externally configured OpenTelemetry SDK for Jackson metrics.**
+   Remove the application-owned metrics bootstrap. Jackson's existing
+   instruments use the global API provider supplied by a preloaded SDK,
+   preserving its resource attributes and avoiding a second exporter/provider.
+   Deployments must preload a Node SDK and enable its metrics exporter;
+   without one, instruments are no-ops. Files: `lib/jackson.ts`, `.env.example`,
+   `npm/test/api/metrics_sdk.test.ts`.
 
 Invariants the series must keep, and the tests that hold them:
 
@@ -98,6 +105,9 @@ Invariants the series must keep, and the tests that hold them:
   `npm/test/dsync/batch/webhooks.test.ts`
 - Current setup-link validation and stored redirect semantics remain covered.
   `npm/test/setup-link.test.ts`
+- Initializing Jackson must not register another metrics provider. Its real
+  counters export through the existing SDK with that SDK's service and
+  Kubernetes resource identity intact. `npm/test/api/metrics_sdk.test.ts`
 - The upstream `idp_hint` scope check and the provider-error early return in
   the OIDC callback are upstream behavior and must survive every rebase.
 
