@@ -3,9 +3,9 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import jackson from '@lib/jackson';
 import { OAuthReq } from '@boxyhq/saml-jackson';
 import { setErrorCookieAndRedirect } from '@lib/utils';
-import { logger } from '@lib/logger';
+import { instrumentSsoRoute, failure } from '@lib/sso-telemetry';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     if (req.method !== 'GET' && req.method !== 'POST') {
       throw { message: 'Method not allowed', statusCode: 405 };
@@ -18,7 +18,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     );
     if (redirect_url) {
       if (error) {
-        logger.error(`Authorize error: ${error}`);
+        failure(new Error(error));
       }
       res.redirect(302, redirect_url);
     } else {
@@ -26,9 +26,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.send(authorize_form);
     }
   } catch (err: any) {
-    logger.error(err, 'Authorize error');
+    failure(err);
     const { message, statusCode = 500 } = err;
 
     setErrorCookieAndRedirect(res, { message, statusCode });
   }
 }
+
+export default instrumentSsoRoute('authorize', handler);

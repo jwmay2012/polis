@@ -1,0 +1,38 @@
+[
+  {
+    "kind": "oauth-state",
+    "value": "a+B%2FC= Ω",
+    "namespace": "polis-sso",
+    "expected": "77aadc22e68010f7fd2ad3fd93596826d08130906ac2c2cf62f9d6077d448475"
+  },
+  {
+    "kind": "polis-session",
+    "value": "0123456789abcdef0123456789abcdef",
+    "namespace": "polis-sso",
+    "expected": "c76f0fc76387e9c24da7690b094f997ac63f255538aca08ceae4f8bd26028f7c"
+  },
+  {
+    "kind": "oauth-code",
+    "value": "001122.abcDEF",
+    "namespace": "polis-sso",
+    "expected": "dfe170188d98eb33d4020f38e6df9ddcd1fb301f6afc82223cc7f1302a49a97e"
+  },
+  {
+    "kind": "id-token",
+    "value": "a.b.c",
+    "namespace": "polis-sso",
+    "expected": "109e9f79e36c20f70e6b98e5b0c656eb5ea571b7cee844a3e85a678fb1c206b5"
+  },
+  {
+    "kind": "access-token",
+    "value": "ffeedd.998877",
+    "namespace": "polis-sso",
+    "expected": "11847b8093d436dafe1504d2e02dacb1f1df7369803f9d7bdb1e9ccd079094a9"
+  },
+  {
+    "kind": "nonce",
+    "value": "AbC-123_+=",
+    "namespace": "polis-sso",
+    "expected": "cd75a90e6b39cb8727fd6099757a73946a65d54d3dc96236a6590b841279728d"
+  }
+]

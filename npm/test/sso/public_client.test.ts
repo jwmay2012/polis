@@ -13,6 +13,7 @@ import type {
   Profile,
 } from '../../src/typings';
 import { jacksonOptions } from '../utils';
+import { fingerprint, type SsoEvent } from '../../src/opentelemetry/telemetry';
 
 // One federation app with a confidential (web) redirect and a public (mobile)
 // redirect, fronting an OIDC connection per tenant: one that is also
@@ -54,6 +55,7 @@ let app: IdentityFederationApp;
 
 // Every upstream code exchange the mocked openid-client performed.
 const exchanges: Array<{ clientSecret?: string; redirectUri: string }> = [];
+const events: SsoEvent[] = [];
 
 tap.before(async () => {
   const client = await import('openid-client');
@@ -100,7 +102,24 @@ tap.before(async () => {
   const indexModule = tap.mockRequire('../../src/index', {
     '../../src/controller/utils': utilsMock,
   });
-  const controller = await indexModule.default(jacksonOptions);
+  const signingKeys = crypto.generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+  });
+  const controller = await indexModule.default({
+    ...jacksonOptions,
+    telemetry: (row: SsoEvent) => {
+      events.push(row);
+    },
+    openid: {
+      ...jacksonOptions.openid,
+      jwtSigningKeys: {
+        private: Buffer.from(signingKeys.privateKey).toString('base64'),
+        public: Buffer.from(signingKeys.publicKey).toString('base64'),
+      },
+    },
+  });
 
   oauthController = controller.oauthController;
   connectionAPIController = controller.connectionAPIController;
@@ -145,7 +164,7 @@ tap.teardown(async () => {
   process.exit(0);
 });
 
-const authorize = async (tenant: string, redirectUri: string, codeChallenge?: string) => {
+const authorize = async (tenant: string, redirectUri: string, codeChallenge?: string, openid = false) => {
   const state = crypto.randomUUID();
   const { redirect_url } = (await oauthController.authorize(<OAuthReq>{
     client_id: app.clientID,
@@ -153,6 +172,7 @@ const authorize = async (tenant: string, redirectUri: string, codeChallenge?: st
     response_type: 'code',
     state,
     login_hint: `user@${tenant}`,
+    ...(openid ? { scope: 'openid email profile', nonce: state } : {}),
     ...(codeChallenge ? { code_challenge: codeChallenge, code_challenge_method: 'S256' } : {}),
   })) as { redirect_url: string };
   const url = new URL(redirect_url);
@@ -317,4 +337,63 @@ tap.test('Redirect outside the app allow list', async (t) => {
     { statusCode: 403, message: /Redirect URL is not allowed/ },
     'rejected at authorization'
   );
+});
+
+tap.test('federation lifecycle telemetry preserves both independent client modes', async (t) => {
+  for (const tenant of [publicTenant, confidentialTenant]) {
+    for (const redirect of [mobileRedirect, webRedirect]) {
+      const offset = events.length;
+      const { verifier, challenge } = pkce();
+      const { relayState, state } = await authorize(tenant, redirect, challenge, true);
+      const { code } = await callback(relayState);
+      const isPublic = redirect === mobileRedirect;
+      const publicUpstream = isPublic && tenant === publicTenant;
+      const tokens = await redeem({
+        code,
+        redirect_uri: redirect,
+        code_verifier: verifier,
+        ...(isPublic ? {} : { client_secret: app.clientSecret }),
+      });
+      const profile = await oauthController.userInfo(tokens.access_token);
+      t.equal(profile.email, 'user@example.com');
+      const rows = events.slice(offset);
+      const completed = ['authorize', 'oidc_callback', 'token', 'userinfo'].map((operation) =>
+        rows.find(
+          (row) =>
+            row.sso_event === 'polis_request_completed' &&
+            row.operation === operation &&
+            row.outcome === 'succeeded'
+        )!
+      );
+      t.ok(completed.every(Boolean), `${tenant} / ${redirect}: every operation completed`);
+      for (const row of completed) {
+        t.equal(row.federation_app_id, app.id);
+        t.equal(row.downstream_client_type, isPublic ? 'public' : 'confidential');
+        t.equal(row.upstream_client_auth, publicUpstream ? 'pkce' : 'client_secret_and_pkce');
+        t.equal(
+          row.upstream_redirect_uri,
+          publicUpstream ? publicUpstreamRedirectUri : confidentialUpstreamRedirectUri
+        );
+        t.equal(row.polis_session_fp, completed[0].polis_session_fp);
+      }
+      t.match(completed[0].polis_session_fp, /^[a-f0-9]{64}$/);
+      t.equal(
+        completed[2].client_auth_branch,
+        isPublic ? 'federation_public_pkce' : 'federation_confidential_pkce'
+      );
+      t.equal(completed[0].downstream_nonce_fp, fingerprint('nonce', state));
+      const issued = rows.find((row) => row.sso_event === 'polis_code_issued')!;
+      const redeemed = rows.find((row) => row.sso_event === 'polis_token_redeemed')!;
+      const served = rows.find((row) => row.sso_event === 'polis_userinfo_served')!;
+      t.equal(issued.authorization_code_fp, fingerprint('oauth-code', code));
+      t.equal(redeemed.authorization_code_fp, issued.authorization_code_fp);
+      t.equal(redeemed.id_token_fp, fingerprint('id-token', tokens.id_token));
+      t.match(redeemed.id_token_fp, /^[a-f0-9]{64}$/);
+      t.equal(served.id_token_fp, redeemed.id_token_fp);
+      t.equal(served.access_token_fp, fingerprint('access-token', tokens.access_token));
+      t.equal(served.requested_email, `user@${tenant}`);
+      t.equal(served.asserted_email, 'user@example.com');
+      t.equal((profile as any).telemetry, undefined, 'internal context does not enter userinfo');
+    }
+  }
 });

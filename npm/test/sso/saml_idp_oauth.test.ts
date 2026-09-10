@@ -10,7 +10,7 @@ import {
   OAuthReq,
 } from '../../src/typings';
 import sinon from 'sinon';
-import tap from 'tap';
+import tap, { type Test } from 'tap';
 import { JacksonError } from '../../src/controller/error';
 import saml from '@boxyhq/saml20';
 import {
@@ -51,6 +51,7 @@ import {
 import { addSSOConnections, jacksonOptions } from '../utils';
 import boxyhq from './data/metadata/boxyhq';
 import type { GenerateKeyPairResult } from 'jose';
+import { fingerprint, type SsoEvent } from '../../src/opentelemetry/telemetry';
 
 let connectionAPIController: IConnectionAPIController;
 let oauthController: IOAuthController;
@@ -63,6 +64,30 @@ const metadataPath = path.join(__dirname, '/data/metadata');
 let connections: Array<any> = [];
 let code_verifier: string;
 let code_challenge: string;
+const telemetryEvents: SsoEvent[] = [];
+
+function assertSamlContinuity(t: Test, rows: SsoEvent[], relayState: string, subjectSource: string) {
+  const stages = [
+    'polis_idp_redirect_issued',
+    'polis_code_issued',
+    'polis_token_redeemed',
+    'polis_userinfo_served',
+  ].map((name) => rows.find((row) => row.sso_event === name)!);
+  t.ok(stages.every(Boolean), 'the real controller flow emits every SAML lifecycle stage');
+  const session = relayState.slice(utils.relayStatePrefix.length);
+  for (const row of stages) {
+    t.equal(row.polis_session_fp, fingerprint('polis-session', session));
+    t.equal(row.upstream_state_fp, fingerprint('oauth-state', relayState));
+    t.equal(row.upstream_redirect_uri, `${jacksonOptions.externalUrl}${jacksonOptions.samlPath}`);
+  }
+  t.match(stages[0].saml_request_id, /.+/);
+  t.equal(stages[1].saml_request_id, stages[0].saml_request_id, 'callback recovers the generated request ID');
+  t.equal(stages[1].expected_audience, jacksonOptions.samlAudience);
+  t.equal(stages[1].profile_validated, true);
+  t.equal(stages[1].subject_source, subjectSource);
+  t.equal(stages[1].authorization_code_fp, stages[2].authorization_code_fp);
+  t.equal(stages[2].access_token_fp, stages[3].access_token_fp);
+}
 
 function _stubRandomBytes(codeOrToken: string) {
   return sinon
@@ -106,7 +131,14 @@ tap.before(async () => {
 
   keyPair = await jose.generateKeyPair('RS256', { modulusLength: 3072 });
 
-  const controller = await (await import('../../src/index')).default(jacksonOptions);
+  const controller = await (
+    await import('../../src/index')
+  ).default({
+    ...jacksonOptions,
+    telemetry: (row) => {
+      telemetryEvents.push(row);
+    },
+  });
   const idpFlowEnabledController = await (
     await import('../../src/index')
   ).default({ ...jacksonOptions, idpEnabled: true });
@@ -124,6 +156,30 @@ tap.before(async () => {
 
 tap.teardown(async () => {
   process.exit(0);
+});
+
+tap.test('SAML email-derived subject retains controller-flow telemetry', async (t) => {
+  const offset = telemetryEvents.length;
+  const { redirect_url } = await oauthController.authorize(authz_request_normal as OAuthReq);
+  const relayState = new URL(redirect_url!).searchParams.get('RelayState')!;
+  const assertion = await fs.readFile(path.join(__dirname, '/data/saml_response'), 'utf8');
+  const validate = sinon.stub(saml, 'validate').resolves({
+    audience: jacksonOptions.samlAudience!,
+    issuer: '',
+    sessionIndex: 'fixture',
+    claims: { email: 'fallback@example.com', firstName: 'Fallback', lastName: 'User' },
+  });
+  try {
+    const callback = await oauthController.samlResponse({ SAMLResponse: assertion, RelayState: relayState });
+    const code = new URL(callback.redirect_url!).searchParams.get('code')!;
+    const tokens = await oauthController.token({ ...token_req_encoded_client_id, code } as OAuthTokenReq);
+    const profile = await oauthController.userInfo(tokens.access_token);
+    t.equal(profile.email, 'fallback@example.com');
+    t.equal(profile.id, crypto.createHash('sha256').update('fallback@example.com').digest('hex'));
+    assertSamlContinuity(t, telemetryEvents.slice(offset), relayState, 'email_sha256');
+  } finally {
+    validate.restore();
+  }
 });
 
 tap.test('authorize()', async (t) => {
@@ -617,6 +673,7 @@ tap.test('token()', async (t) => {
       });
 
       t.test('openid flow', async (t) => {
+        const telemetryOffset = telemetryEvents.length;
         const authBody = authz_request_normal_oidc_flow;
 
         const { redirect_url } = (await oauthController.authorize(<OAuthReq>authBody)) as {
@@ -672,6 +729,7 @@ tap.test('token()', async (t) => {
 
         const profile = await oauthController.userInfo(tokenRes.access_token);
 
+        assertSamlContinuity(t, telemetryEvents.slice(telemetryOffset), relayState!, 'saml_nameidentifier');
         t.equal(profile.sub, 'id');
         t.equal(profile.requested.client_id, authz_request_normal_oidc_flow.client_id);
         t.equal(profile.requested.state, authz_request_normal_oidc_flow.state);

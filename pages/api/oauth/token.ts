@@ -2,9 +2,9 @@ import { NextApiRequest, NextApiResponse } from 'next';
 
 import jackson from '@lib/jackson';
 import { cors } from '@lib/middleware';
-import { logger } from '@lib/logger';
+import { instrumentSsoRoute, failure } from '@lib/sso-telemetry';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     await cors(req, res);
 
@@ -18,9 +18,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     res.json(result);
   } catch (err: any) {
-    logger.error(err, 'Token error');
+    failure(err);
     const { message, statusCode = 500 } = err;
 
     res.status(statusCode).send(message);
   }
 }
+
+export default instrumentSsoRoute('token', handler);

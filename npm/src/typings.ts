@@ -479,6 +479,8 @@ export interface JacksonOption {
   polisHosted?: boolean;
 
   ssoTraces?: SSOTracesOption;
+  /** Optional structured SSO event sink; failures never change auth results. */
+  telemetry?: import('./opentelemetry/telemetry').SsoTelemetrySink;
   logger?: {
     info?: (msg: string, err?: any) => void;
     warn?: (msg: string, err?: any) => void;

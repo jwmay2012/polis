@@ -1,44 +1,32 @@
-import pino, { type Logger } from 'pino';
+import pino, { type Logger, type LoggerOptions } from 'pino';
 import fs from 'fs';
 import { loggerOptions } from '@lib/env';
+import { serializeError } from '../npm/src/opentelemetry/errors';
+import type { SsoEvent } from '../npm/src/opentelemetry/telemetry';
+import { logContextFields } from '../npm/src/opentelemetry/telemetry';
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const g = global as any;
 
-// Custom error serializer for production that omits stack traces
-const productionErrorSerializer = ({
-  message,
-  statusCode = 500,
-  internalError,
-}: Error & { statusCode?: number; internalError?: string }) => {
-  // stack trace is intentionally omitted
-  const err: any = { message, statusCode };
-  if (internalError) {
-    err.internalError = internalError;
-  }
-  return err;
-};
-
 export function initLogger(logFile?: string, logLevel?: string): Logger {
-  if (logFile) {
-    return pino(fs.createWriteStream(logFile));
-  }
-
-  return pino({
+  const options: LoggerOptions = {
     level: logLevel || 'info',
+    mixin: logContextFields,
     timestamp: () => `,"time":"${new Date().toISOString()}"`,
-    transport: isDevelopment
-      ? {
-          target: 'pino-pretty',
-          options: {
-            colorize: true,
-          },
-        }
-      : undefined,
+    transport:
+      isDevelopment && !logFile
+        ? {
+            target: 'pino-pretty',
+            options: {
+              colorize: true,
+            },
+          }
+        : undefined,
     serializers: {
-      err: isDevelopment ? pino.stdSerializers.err : productionErrorSerializer,
+      err: serializeError,
     },
-  });
+  };
+  return logFile ? pino(options, fs.createWriteStream(logFile)) : pino(options);
 }
 
 function initLoggerFromEnv(): Logger {
@@ -49,3 +37,7 @@ function initLoggerFromEnv(): Logger {
 }
 
 export const logger = initLoggerFromEnv();
+
+export const emitSsoEvent = ({ severity, msg, ...fields }: SsoEvent) => {
+  logger[severity](fields, msg);
+};

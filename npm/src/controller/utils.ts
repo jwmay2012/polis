@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import saml from '@boxyhq/saml20';
+import * as telemetry from '../opentelemetry/telemetry';
 import type { Configuration, authorizationCodeGrant } from 'openid-client';
 import * as dbutils from '../db/utils';
 import type {
@@ -276,7 +277,10 @@ export const extractOIDCUserProfile = async (
 ) => {
   const idTokenClaims = tokens.claims()!;
   const client = (await dynamicImport('openid-client')) as typeof import('openid-client');
-  const userinfo = await client.fetchUserInfo(oidcConfig, tokens.access_token, idTokenClaims.sub);
+  const userinfo = await telemetry.stage('upstream_userinfo', () =>
+    client.fetchUserInfo(oidcConfig, tokens.access_token, idTokenClaims.sub)
+  );
+  telemetry.setStage('profile_map');
 
   const profile: { claims: Partial<Profile & { raw: Record<string, unknown> }> } = { claims: {} };
 
@@ -306,6 +310,7 @@ export const extractOIDCUserProfile = async (
   }
 
   profile.claims.raw = rawClaims;
+  telemetry.bindOidcProfile(idTokenClaims, userinfo, profile.claims, tokens.id_token);
 
   return profile;
 };

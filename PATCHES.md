@@ -78,6 +78,16 @@ Each patch is one commit. They apply in this order.
    Deployments must preload a Node SDK and enable its metrics exporter;
    without one, instruments are no-ops. Files: `lib/jackson.ts`, `.env.example`,
    `npm/test/api/metrics_sdk.test.ts`.
+8. **Record structured SSO lifecycle, identity, errors, and continuity.**
+   Request-local telemetry emits stage/completion events and semantic spans,
+   preserves error causes, and connects authorize/callback/code/token/userinfo
+   with native-value fingerprints and server-owned Span Links. Optional
+   telemetry context stays inside encrypted records, not token claims or
+   public responses. Existing auth decisions, routing priority, and response
+   formats are unchanged. The npm library accepts a typed event sink; the
+   application binds it to Pino. See `TELEMETRY.md` for the field and byte
+   contract. Files: `npm/src/opentelemetry/{telemetry,errors}.ts`, OAuth/profile
+   handlers, `lib/sso-telemetry.ts`, and `npm/test/sso/telemetry.test.ts`.
 
 Invariants the series must keep, and the tests that hold them:
 
@@ -112,6 +122,18 @@ Invariants the series must keep, and the tests that hold them:
   Kubernetes resource identity intact. `npm/test/api/metrics_sdk.test.ts`
 - The upstream `idp_hint` scope check and the provider-error early return in
   the OIDC callback are upstream behavior and must survive every rebase.
+- Telemetry is isolated per request, retains legacy-record compatibility,
+  never copies request IDs across redirects, and never changes authentication
+  results when an event sink fails. Native fingerprints cover full wire codes
+  and tokens. A failed SSO callback can have an error-marked semantic span
+  while its unchanged HTTP response is 302. `npm/test/sso/telemetry.test.ts`
+- Per-call HTTP facts do not leak into later failures; process-lifetime
+  initialization detaches both contexts; mapped profiles are marked validated
+  only after their checks complete. Federation and SAML fixture flows verify
+  the real controller's metadata continuity. File logging retains the same
+  context and error behavior. `npm/test/sso/telemetry.test.ts`,
+  `npm/test/sso/public_client.test.ts`, `npm/test/sso/saml_idp_oauth.test.ts`,
+  `npm/test/api/file_logger.test.ts`
 
 Upstream status: none of the patches is upstream. Patches 1, 4, 5, and 6 are
 generic enough to propose after this release is accepted.
