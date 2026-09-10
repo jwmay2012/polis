@@ -4,6 +4,7 @@ import { IndexNames } from '../controller/utils';
 import { keyFromParts } from '../db/utils';
 import type { SSOTrace, Trace } from './types';
 import { JacksonError } from '../controller/error';
+import * as telemetry from '../opentelemetry/telemetry';
 
 const INTERVAL_1_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const INTERVAL_1_DAY_MS = 24 * 60 * 60 * 1000;
@@ -30,7 +31,8 @@ class SSOTraces {
     }
 
     try {
-      const { context } = payload;
+      // Preserve the existing report's tenant/product indexing semantics.
+      const context = { ...telemetry.telemetryFields(), ...payload.context };
 
       if (this.opts.ssoTraces?.redact) {
         SSO_TRACES_REDACT_KEYS.forEach((key) => delete context[key]);
@@ -39,7 +41,7 @@ class SSOTraces {
       const traceId: string = await generateMnemonic();
       // If timestamp present in payload use that value, else generate the current timestamp
       const timestamp = typeof payload.timestamp === 'number' ? payload.timestamp : Date.now();
-      const traceValue: Trace = { ...payload, traceId, timestamp };
+      const traceValue: Trace = { ...payload, context, traceId, timestamp };
       const { tenant, product, clientID } = context;
 
       const indices = [
@@ -63,9 +65,16 @@ class SSOTraces {
         .map(({ name, value }) => ({ name, value }));
 
       await this.tracesStore.put(traceId, traceValue, ...indices);
+      telemetry.enrich({ polis_error_report_id: traceId });
+      telemetry.event(
+        'polis_error_report_saved',
+        { polis_error_report_id: traceId },
+        'Polis error report saved'
+      );
       return traceId;
     } catch (err: unknown) {
-      this.opts.logger.error(`Failed to save trace`, err);
+      telemetry.warning(err, 'polis_error_report_failed');
+      if (!telemetry.telemetryActive()) this.opts.logger.error(`Failed to save trace`, err);
     }
   }
 

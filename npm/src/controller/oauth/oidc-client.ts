@@ -5,6 +5,7 @@ import { JacksonError } from '../error';
 import { URL } from 'url';
 import { SSOTrace, SSOTracesInstance } from '../../typings';
 import { dynamicImport, GENERIC_ERR_STRING } from '../utils';
+import * as telemetry from '../../opentelemetry/telemetry';
 
 const createCustomFetch = (ssoTraces: { instance: SSOTracesInstance; context: SSOTrace['context'] }) => {
   return async (url: string | URL, options: CustomFetchOptions): Promise<Response> => {
@@ -29,6 +30,14 @@ const createCustomFetch = (ssoTraces: { instance: SSOTracesInstance; context: SS
         headers: Object.fromEntries(headers.entries()),
       };
       const request = parsedUrl.protocol === 'https:' ? https.request : http.request;
+      const started = performance.now();
+      const endpointRole = telemetry.telemetryFields().stage;
+      const endpoint = parsedUrl.origin + parsedUrl.pathname;
+      telemetry.enrich({
+        upstream_endpoint: endpoint,
+        upstream_endpoint_role: endpointRole,
+        upstream_http_method: requestOptions.method,
+      });
 
       const req = request(requestOptions, (res) => {
         let data = '';
@@ -38,6 +47,15 @@ const createCustomFetch = (ssoTraces: { instance: SSOTracesInstance; context: SS
         });
 
         res.on('end', () => {
+          telemetry.enrich({
+            upstream_endpoint: endpoint,
+            upstream_endpoint_role: endpointRole,
+            upstream_http_status: res.statusCode,
+            upstream_duration_ms: Math.round((performance.now() - started) * 1000) / 1000,
+            idp_request_id:
+              res.headers['x-ms-request-id'] || res.headers['request-id'] || res.headers['x-request-id'],
+            idp_correlation_id: res.headers['x-ms-correlation-id'] || res.headers['x-correlation-id'],
+          });
           const response = new Response(data, {
             status: res.statusCode,
             statusText: res.statusMessage,
@@ -49,6 +67,11 @@ const createCustomFetch = (ssoTraces: { instance: SSOTracesInstance; context: SS
       });
 
       req.on('error', (error) => {
+        telemetry.enrich({
+          upstream_endpoint: endpoint,
+          upstream_endpoint_role: endpointRole,
+          upstream_duration_ms: Math.round((performance.now() - started) * 1000) / 1000,
+        });
         ssoTraces.instance.saveTrace({
           error: `Fetch failed for OIDC IdP endpoint: ${parsedUrl.toString()}`,
           context: ssoTraces.context,

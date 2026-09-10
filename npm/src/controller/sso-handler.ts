@@ -22,6 +22,7 @@ import * as redirect from './oauth/redirect';
 import * as allowed from './oauth/allowed';
 import { oidcClientConfig } from './oauth/oidc-client';
 import { extractDomainFromLoginHint, filterConnectionsByDomain } from './domain-utils';
+import * as telemetry from '../opentelemetry/telemetry';
 
 const deflateRawAsync = promisify(deflateRaw);
 
@@ -64,6 +65,21 @@ export class SSOHandler {
   }): Promise<
     { connection: SAMLSSORecord | OIDCSSORecord } | { redirectUrl: string } | { postForm: string }
   > {
+    return telemetry.stage('resolve_connection', async () => {
+      const result = await this.resolveConnectionWithTelemetry(params);
+      if ('connection' in result) {
+        telemetry.bindConnection(result.connection);
+        telemetry.event('polis_connection_selected', {}, 'Polis connection selected');
+      } else {
+        telemetry.event('polis_connection_selection_required', {}, 'Polis connection selection required');
+      }
+      return result;
+    });
+  }
+
+  private async resolveConnectionWithTelemetry(
+    params: Parameters<SSOHandler['resolveConnection']>[0]
+  ): Promise<{ connection: SAMLSSORecord | OIDCSSORecord } | { redirectUrl: string } | { postForm: string }> {
     const {
       authFlow,
       originalParams,
@@ -84,10 +100,17 @@ export class SSOHandler {
 
     // If an IdP is specified, find the connection for that IdP.
     if (idp_hint) {
+      telemetry.enrich({ routing_source: 'idp_hint', selected_idp_hint: idp_hint });
+      telemetry.setStage('connection_lookup');
       const connection = await this.connection.get(idp_hint);
+      telemetry.setStage('resolve_connection');
 
       if (!connection) {
-        throw new JacksonError(GENERIC_ERR_STRING, 403, noSSOConnectionErrMessage);
+        throw telemetry.diagnostic(
+          new JacksonError(GENERIC_ERR_STRING, 403, noSSOConnectionErrMessage),
+          'hinted_connection_not_found',
+          'routing'
+        );
       }
 
       // The hinted connection is selected by id, which is attacker-controllable
@@ -96,13 +119,22 @@ export class SSOHandler {
       // a connection in another tenant (CWE-639). Reject any hint that the
       // non-hint lookups below would not have returned.
       if (!this.isConnectionInScope(connection, { tenant, product, tenants, entityId })) {
-        throw new JacksonError(GENERIC_ERR_STRING, 403, noSSOConnectionErrMessage);
+        telemetry.enrich({ connection_scope_matches: false });
+        throw telemetry.diagnostic(
+          new JacksonError(GENERIC_ERR_STRING, 403, noSSOConnectionErrMessage),
+          'connection_scope_mismatch',
+          'protocol'
+        );
       }
+
+      telemetry.enrich({ connection_scope_matches: true });
 
       return { connection };
     }
 
     // Find SAML connections for the app
+    telemetry.enrich({ routing_source: entityId ? 'issuer' : 'tenant_product' });
+    telemetry.setStage('connection_lookup');
     if (tenants && tenants.length > 0 && product) {
       const result = await Promise.all(
         tenants.map((tenant) =>
@@ -128,23 +160,38 @@ export class SSOHandler {
     }
 
     // Filter out inactive connections before any routing logic
+    telemetry.setStage('resolve_connection');
+    telemetry.enrich({ candidate_count: connections?.length || 0 });
     if (connections) {
       connections = connections.filter(isConnectionActive);
     }
+    telemetry.enrich({ active_candidate_count: connections?.length || 0 });
 
     if (!connections || connections.length === 0) {
-      throw new JacksonError(GENERIC_ERR_STRING, 403, noSSOConnectionErrMessage);
+      throw telemetry.diagnostic(
+        new JacksonError(GENERIC_ERR_STRING, 403, noSSOConnectionErrMessage),
+        'no_active_connection',
+        'routing'
+      );
     }
 
     // NEW: Domain-based filtering for automatic IDP selection
     // Check if domain-based routing is enabled (via environment variable)
     const domainRoutingEnabled = process.env.ENABLE_DOMAIN_ROUTING !== 'false'; // Default: true
     const strictDomainRouting = process.env.STRICT_DOMAIN_ROUTING === 'true'; // Default: false
+    telemetry.enrich({
+      domain_routing_enabled: domainRoutingEnabled,
+      strict_domain_routing: strictDomainRouting,
+    });
 
     if (domainRoutingEnabled) {
       // In strict mode, require login_hint
       if (strictDomainRouting && !login_hint) {
-        throw new JacksonError('Authentication requires email address', 400, 'missing_login_hint');
+        throw telemetry.diagnostic(
+          new JacksonError('Authentication requires email address', 400, 'missing_login_hint'),
+          'missing_login_hint',
+          'request'
+        );
       }
 
       if (login_hint) {
@@ -153,13 +200,15 @@ export class SSOHandler {
         if (domain) {
           const originalCount = connections.length;
           const filteredConnections = filterConnectionsByDomain(connections, domain);
+          telemetry.enrich({ requested_domain: domain, domain_candidate_count: filteredConnections.length });
 
           // Only use filtered connections if we found at least one match
           if (filteredConnections.length > 0) {
             connections = filteredConnections;
+            telemetry.enrich({ routing_source: 'email_domain' });
 
             // Log successful domain filtering for debugging
-            if (this.opts.logger) {
+            if (this.opts.logger && !telemetry.telemetryActive()) {
               this.opts.logger.info(
                 `Domain routing: filtered from ${originalCount} to ${connections.length} connection(s) for domain '${domain}'`
               );
@@ -168,26 +217,34 @@ export class SSOHandler {
             // In strict mode, require exactly one match
             if (strictDomainRouting && connections.length > 1) {
               // Log the ambiguous situation for debugging
-              if (this.opts.logger) {
+              if (this.opts.logger && !telemetry.telemetryActive()) {
                 this.opts.logger.warn(
                   `Domain routing: Multiple SSO configurations found for domain '${domain}' in strict mode`
                 );
               }
-              throw new JacksonError('Multiple SSO configurations found', 400, 'ambiguous_domain');
+              throw telemetry.diagnostic(
+                new JacksonError('Multiple SSO configurations found', 400, 'ambiguous_domain'),
+                'ambiguous_domain',
+                'configuration'
+              );
             }
           } else {
             // No matches found
             if (strictDomainRouting) {
               // Log the failed attempt for security monitoring
-              if (this.opts.logger) {
+              if (this.opts.logger && !telemetry.telemetryActive()) {
                 this.opts.logger.warn(
                   `Domain routing: No SSO configuration for domain '${domain}' in strict mode`
                 );
               }
-              throw new JacksonError('No SSO configuration found', 404, 'domain_not_configured');
+              throw telemetry.diagnostic(
+                new JacksonError('No SSO configuration found', 404, 'domain_not_configured'),
+                'domain_not_configured',
+                'routing'
+              );
             } else {
               // Non-strict mode: Log and continue with all connections
-              if (this.opts.logger) {
+              if (this.opts.logger && !telemetry.telemetryActive()) {
                 this.opts.logger.info(
                   `Domain routing: no connections found for domain '${domain}', showing all connections`
                 );
@@ -196,7 +253,11 @@ export class SSOHandler {
           }
         } else if (strictDomainRouting) {
           // login_hint provided but couldn't extract domain (invalid email format)
-          throw new JacksonError('Invalid email format', 400, 'invalid_login_hint');
+          throw telemetry.diagnostic(
+            new JacksonError('Invalid email format', 400, 'invalid_login_hint'),
+            'invalid_login_hint',
+            'request'
+          );
         }
       }
     }
@@ -239,6 +300,7 @@ export class SSOHandler {
 
     // If more than one, redirect to the connection selection page
     if (connections.length > 1) {
+      telemetry.enrich({ routing_source: 'connection_picker' });
       const url = new URL(`${this.opts.externalUrl}${this.opts.idpDiscoveryPath}`);
 
       // SP initiated flow
