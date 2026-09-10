@@ -2,9 +2,9 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 import jackson from '@lib/jackson';
 import { setErrorCookieAndRedirect } from '@lib/utils';
-import { logger } from '@lib/logger';
+import { instrumentSsoRoute, failure } from '@lib/sso-telemetry';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { method } = req;
 
   try {
@@ -29,7 +29,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (redirect_url) {
       if (error) {
-        logger.error(`Error processing SAML IdP response: ${error}`);
+        failure(new Error(error));
       }
       res.redirect(302, redirect_url);
       return;
@@ -48,8 +48,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   } catch (err: any) {
     const { message, statusCode = 500 } = err;
-    logger.error(err, 'Error processing SAML IdP response:');
+    failure(err);
 
     setErrorCookieAndRedirect(res, { message, statusCode });
   }
 }
+
+export default instrumentSsoRoute('saml_callback', handler);

@@ -1,23 +1,12 @@
 import pino, { type Logger } from 'pino';
 import fs from 'fs';
 import { loggerOptions } from '@lib/env';
+import { serializeError } from '../npm/src/opentelemetry/errors';
+import type { SsoEvent } from '../npm/src/opentelemetry/telemetry';
+import { logContextFields } from '../npm/src/opentelemetry/telemetry';
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const g = global as any;
-
-// Custom error serializer for production that omits stack traces
-const productionErrorSerializer = ({
-  message,
-  statusCode = 500,
-  internalError,
-}: Error & { statusCode?: number; internalError?: string }) => {
-  // stack trace is intentionally omitted
-  const err: any = { message, statusCode };
-  if (internalError) {
-    err.internalError = internalError;
-  }
-  return err;
-};
 
 export function initLogger(logFile?: string, logLevel?: string): Logger {
   if (logFile) {
@@ -26,6 +15,7 @@ export function initLogger(logFile?: string, logLevel?: string): Logger {
 
   return pino({
     level: logLevel || 'info',
+    mixin: logContextFields,
     timestamp: () => `,"time":"${new Date().toISOString()}"`,
     transport: isDevelopment
       ? {
@@ -36,7 +26,7 @@ export function initLogger(logFile?: string, logLevel?: string): Logger {
         }
       : undefined,
     serializers: {
-      err: isDevelopment ? pino.stdSerializers.err : productionErrorSerializer,
+      err: serializeError,
     },
   });
 }
@@ -49,3 +39,7 @@ function initLoggerFromEnv(): Logger {
 }
 
 export const logger = initLoggerFromEnv();
+
+export const emitSsoEvent = ({ severity, msg, ...fields }: SsoEvent) => {
+  logger[severity](fields, msg);
+};
