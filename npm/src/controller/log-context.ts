@@ -120,6 +120,8 @@ export function restoreContinuation(value: unknown) {
       const field = saved.fields[key];
       if (scalar(field) || (Array.isArray(field) && field.every(scalar))) fields[key] = field;
     }
+    // Older records also used this alias for an unverified login_hint.
+    if (fields.user_email !== fields.asserted_email) delete fields.user_email;
     if (state.fields.polis_session_fp && fields.polis_session_fp !== state.fields.polis_session_fp) {
       if (fields.polis_session_fp) bindContext({ correlation_mismatch: true });
       delete fields.polis_session_fp;

@@ -607,6 +607,25 @@ tap.test('malformed credentials, absent records and storage errors retain real e
 
 tap.test('identity facts distinguish requested and asserted email and verification sources', async (t) => {
   const f = fixture();
+  for (const asserted_email of [undefined, 'verified@example.com'])
+    await scoped(f, {}, () => {
+      flow.bindSession({
+        requested: { login_hint: 'requested@example.com' },
+        telemetry: {
+          version: 1,
+          fields: {
+            requested_email: 'requested@example.com',
+            user_email: asserted_email || 'requested@example.com',
+            asserted_email,
+          },
+        },
+      });
+      t.equal(
+        logging.contextFields().user_email,
+        asserted_email,
+        'legacy login_hint aliases are not treated as an authenticated user'
+      );
+    });
   await scoped(f, {}, () => {
     flow.bindSession({ requested: { login_hint: 'requested@example.com' } });
     t.equal(logging.contextFields().user_email, undefined);

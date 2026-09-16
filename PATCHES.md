@@ -25,6 +25,10 @@ patch on the same reviewed upstream base; older release branches and tags remain
 
 Each patch is one commit. They apply in this order.
 
+After publishing a release, append small corrections as `fixup!` commits rather
+than rewriting its history. Fold them into their owning feature on the next
+rebase/release branch. Published tags are never moved.
+
 1. **Route SSO connections by the login_hint email domain, with a strict mode.**
    Absent an explicit `idp_hint`, when `login_hint` is an email address,
    `resolveConnection` keeps only the active connections whose `tenant` equals
