@@ -2,7 +2,7 @@ import { serializeError } from './errors';
 
 export type Secrets = Map<string, string>;
 const secretFields = new Set(
-  'authorization proxyauthorization cookie setcookie password passwd secret clientsecret token accesstoken refreshtoken idtoken code codeverifier codechallenge state relaystate nonce samlrequest samlresponse private privatekey signingkey encryptionkey dburl dsn'.split(
+  'authorization proxyauthorization cookie setcookie password passwd secret clientsecret clientassertion assertion token accesstoken refreshtoken idtoken code codeverifier codechallenge state relaystate nonce samlrequest samlresponse private privatekey signingkey encryptionkey dburl dsn'.split(
     ' '
   )
 );

@@ -26,6 +26,8 @@ tap.test('redaction preserves useful facts and native errors without changing in
     },
     body: {
       client_secret: password,
+      client_assertion: 'fixture-client-assertion',
+      assertion: 'fixture-bearer-assertion',
       requested_email: 'user@example.com',
       nested: { access_token: 'fixture-token' },
     },
@@ -42,6 +44,8 @@ tap.test('redaction preserves useful facts and native errors without changing in
     response: { headers: { 'set-cookie': ['[REDACTED]'], location: 'https://app.example/callback' } },
     body: {
       client_secret: '[REDACTED]',
+      client_assertion: '[REDACTED]',
+      assertion: '[REDACTED]',
       requested_email: 'user@example.com',
       nested: { access_token: '[REDACTED]' },
     },
@@ -54,6 +58,8 @@ tap.test('redaction preserves useful facts and native errors without changing in
     'fixture-new-cookie',
     'fixture-token',
     'fixture-state',
+    'fixture-client-assertion',
+    'fixture-bearer-assertion',
     'abc123',
   ])
     t.notMatch(JSON.stringify(output), credential);
