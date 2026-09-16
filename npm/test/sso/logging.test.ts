@@ -488,6 +488,15 @@ tap.test(
     t.equal(decoded.telemetry.fields.polis_session_fp, rows[0].polis_session_fp);
     t.equal(decoded.telemetry.fields.request_id, undefined);
     t.equal(decoded.session, undefined);
+    for (const key of [
+      'asserted_email',
+      'user_email',
+      'first_name',
+      'last_name',
+      'upstream_subject',
+      'claim_keys',
+    ])
+      t.equal(decoded.telemetry.fields[key], undefined, `${key} comes from the profile, not a duplicate`);
     t.notMatch(JSON.stringify(f.logs), code, 'raw wire credentials never land in logs');
     t.notMatch(JSON.stringify(f.logs), token.access_token);
   }
@@ -622,9 +631,11 @@ tap.test('identity facts distinguish requested and asserted email and verificati
       });
       t.equal(
         logging.contextFields().user_email,
-        asserted_email,
-        'legacy login_hint aliases are not treated as an authenticated user'
+        undefined,
+        'legacy identity copies are ignored until the actual profile is loaded'
       );
+      flow.bindProfile({ id: 'subject', email: asserted_email });
+      t.equal(logging.contextFields().user_email, asserted_email);
     });
   await scoped(f, {}, () => {
     flow.bindSession({ requested: { login_hint: 'requested@example.com' } });
@@ -749,7 +760,14 @@ tap.test('stored error reports correlate to the original request and retain repo
   const store = makeStore();
   const reporter = { opts: f.opts, tracesStore: store } as any;
   await scoped(f, {}, async () => {
-    logging.bindContext({ tenant: 'selected-tenant', connection_id: 'connection' });
+    logging.bindContext({
+      tenant: 'selected-tenant',
+      connection_id: 'connection',
+      request_id: 'local-request',
+      polis_session_fp: 'session-fingerprint',
+      user_email: 'person@example.com',
+      http_route: '/api/oauth/oidc',
+    });
     f.opts.logger.error('Unable to validate identity', new Error('original failure'));
     const id = await SSOTraces.prototype.saveTrace.call(reporter, {
       error: 'original failure',
@@ -758,7 +776,13 @@ tap.test('stored error reports correlate to the original request and retain repo
     t.match(store.rows.get(id!).context, {
       tenant: 'original-index-tenant',
       trace_id: logging.contextFields().trace_id,
+      span_id: logging.contextFields().span_id,
+      request_id: 'local-request',
+      operation: 'run',
+      polis_session_fp: 'session-fingerprint',
     });
+    for (const key of ['connection_id', 'user_email', 'http_route', 'fingerprint_namespace'])
+      t.equal(store.rows.get(id!).context[key], undefined, 'report context only adds correlation');
     t.equal(f.logs.find((row) => row.msg === 'Saved SSO error report')?.polis_error_report_id, id);
     store.put = async () => {
       throw new Error('report store down');

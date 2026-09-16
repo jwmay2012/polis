@@ -3,7 +3,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { once } from 'node:events';
 import { register } from 'tsconfig-paths';
-import { bindContext, contextFields, type LogFields } from '../../src/logging/context';
+import { bindContext, contextFields, currentLogger, type LogFields } from '../../src/logging/context';
 import { redact } from '../../src/logging/redact';
 
 const root = path.resolve(__dirname, '../../..');
@@ -167,7 +167,9 @@ tap.test(
         user_email: `${url.pathname.slice(1)}@example.com`,
         connection_id: url.pathname.slice(1),
       });
+      currentLogger().info('Resolved fixture identity');
       await new Promise((resolve) => setTimeout(resolve, url.pathname === '/alice' ? 15 : 2));
+      currentLogger().info('Finished fixture work');
       res.writeHead(201, {
         'content-type': 'application/json',
         'set-cookie': 'session=fixture-response-cookie; HttpOnly',
@@ -193,7 +195,7 @@ tap.test(
     });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const port = (server.address() as { port: number }).port;
-    const request = (route: string, body?: any) =>
+    const request = (route: string, body?: any, requestId: string | null = 'same-caller-id') =>
       new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }>((resolve, reject) => {
         const req = http.request(
           {
@@ -202,7 +204,7 @@ tap.test(
             path: route,
             method: 'POST',
             headers: {
-              'x-request-id': route,
+              ...(requestId === null ? {} : { 'x-request-id': requestId }),
               'x-session-id': 'device-1',
               cookie: 'session=fixture-request-cookie',
               'x-api-key': 'fixture-key-1234',
@@ -235,7 +237,14 @@ tap.test(
       t.same(bodies.get('/alice'), payload, 'request body is never mutated');
       const completed = () => logs.filter((row) => row.msg === 'HTTP request completed');
       t.equal(completed().length, 2, 'exactly one completion per response');
+      t.equal(new Set(completed().map((row) => row.request_id)).size, 2, 'repeated caller IDs stay distinct');
       for (const row of completed()) {
+        t.match(row.request_id, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+        t.equal(row.client_request_id, 'same-caller-id');
+        t.equal(row.trace_id, undefined, 'local IDs also work without an SDK');
+        const related = logs.filter((item) => item.http_route === row.http_route);
+        t.equal(related.length, 3, 'ordinary logs and late completion share context');
+        t.ok(related.every((item) => item.request_id === row.request_id));
         t.equal(row.user_email, `${row.http_route.slice(1)}@example.com`);
         t.equal(row.connection_id, row.http_route.slice(1));
         t.equal(row.http_response_status, 201);
@@ -254,6 +263,10 @@ tap.test(
           'response methods are restored'
         );
       }
+      t.equal((await request('/no-header', undefined, null)).status, 201);
+      const noHeader = completed().find((row) => row.http_route === '/no-header')!;
+      t.match(noHeader.request_id, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+      t.equal(noHeader.client_request_id, undefined);
       const redirect = await request('/redirect');
       t.equal(redirect.status, 302);
       t.equal(
@@ -293,6 +306,8 @@ tap.test(
       );
       t.equal(aborted[0].response.body_omitted, 'Response did not finish');
       t.type(aborted[0].duration_ms, 'number');
+      t.match(aborted[0].request_id, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+      t.equal(aborted[0].client_request_id, undefined);
       t.same(contextFields(), {}, 'no request context remains in the caller');
       for (const credential of [
         'fixture-client-secret',

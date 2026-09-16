@@ -49,10 +49,12 @@ connection, provider/client modes and resolved identity. HTTP payloads appear
 only on the HTTP record. Add newly resolved facts with `bindContext` at their
 point of discovery, or put local details on an ordinary logger call.
 
-The application reads existing headers through `SSO_REQUEST_ID_HEADER` (default
-`x-request-id`) and `SSO_CLIENT_SESSION_ID_HEADER` (default `x-session-id`). These
-are correlation hints, never identity or authorization inputs. No new frontend
-header is required.
+Every HTTP request receives a fresh local `request_id`, including redirects with
+no caller ID. The application separately reads `client_request_id` through
+`SSO_REQUEST_ID_HEADER` (default `x-request-id`) and `client_session_id` through
+`SSO_CLIENT_SESSION_ID_HEADER` (default `x-session-id`). These caller values are
+correlation hints, never identity or authorization inputs. No new frontend header
+is required, and a repeated caller ID does not reuse a local request ID.
 
 ## SSO evidence
 
@@ -101,11 +103,14 @@ Redaction works on copies, never on request/response/error objects.
 
 This is not arbitrary-secret detection: callers must not disguise credentials in
 unknown fields or manually dump whole external objects. Ordinary logs can contain
-emails, names, claim names and identifiers and belong in a restricted log store,
-not high-cardinality stream labels. Existing encrypted admin error reports retain
+emails, names, claim names and identifiers; scalar bound facts also appear as span
+attributes. Both logs and traces require restricted access. These values are not
+high-cardinality stream labels. Existing encrypted admin error reports retain
 their existing `SSO_TRACES_REDACT_KEYS` behavior; that setting is not a general
 scrubber. A saved report's mnemonic `polis_error_report_id` links its log to the
-original request. Caller-provided report tenant/product retain indexing precedence.
+original request. Only request/trace/span IDs, operation and the session fingerprint
+are added to existing report context. Caller-provided report tenant/product retain
+indexing precedence.
 
 ## Fingerprints and continuation, version 1
 
@@ -128,7 +133,11 @@ not trim, lowercase or URL-decode again. A fingerprint is correlation evidence,
 not proof of validation.
 
 A narrow optional `telemetry` object in the existing encrypted session/code/token
-records stores whitelisted flow facts and a SpanContext. Restoring it adds a real
+records stores whitelisted flow facts and a SpanContext. Profile-derived email,
+names, subject, counts and claim names are rebound from the already-loaded profile,
+not duplicated in the continuation. Routing facts and original ID-token/UserInfo
+verification provenance remain because the token record does not retain the session.
+Restoring it adds a real
 Span Link; it never changes the new request's parent or restores old request IDs,
 paths or errors. It is absent from public responses and JWT claims. Legacy records
 and malformed optional metadata still authenticate normally. Lookup miss logs do

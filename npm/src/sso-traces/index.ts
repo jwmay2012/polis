@@ -32,7 +32,8 @@ class SSOTraces {
 
     try {
       // Preserve the existing report's tenant/product indexing semantics.
-      const context = { ...contextFields(), ...payload.context };
+      const { request_id, trace_id, span_id, operation, polis_session_fp } = contextFields();
+      const context = { request_id, trace_id, span_id, operation, polis_session_fp, ...payload.context };
 
       if (this.opts.ssoTraces?.redact) {
         SSO_TRACES_REDACT_KEYS.forEach((key) => delete context[key]);

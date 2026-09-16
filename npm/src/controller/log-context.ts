@@ -58,16 +58,7 @@ const continuationKeys = [
   'upstream_redirect_uri',
   'session_created_at',
   'session_ttl_seconds',
-  'asserted_email',
   'asserted_email_source',
-  'user_email',
-  'first_name',
-  'last_name',
-  'first_name_missing',
-  'last_name_missing',
-  'first_name_placeholder',
-  'last_name_placeholder',
-  'upstream_subject',
   'issued_subject',
   'subject_source',
   'profile_validated',
@@ -84,9 +75,6 @@ const continuationKeys = [
   'upstream_audience',
   'upstream_token_alg',
   'upstream_token_kid',
-  'roles_count',
-  'groups_count',
-  'claim_keys',
   'authorization_code_fp',
   'id_token_fp',
 ];
@@ -120,8 +108,6 @@ export function restoreContinuation(value: unknown) {
       const field = saved.fields[key];
       if (scalar(field) || (Array.isArray(field) && field.every(scalar))) fields[key] = field;
     }
-    // Older records also used this alias for an unverified login_hint.
-    if (fields.user_email !== fields.asserted_email) delete fields.user_email;
     if (state.fields.polis_session_fp && fields.polis_session_fp !== state.fields.polis_session_fp) {
       if (fields.polis_session_fp) bindContext({ correlation_mismatch: true });
       delete fields.polis_session_fp;

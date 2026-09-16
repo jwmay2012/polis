@@ -1,4 +1,5 @@
 import { AsyncResource } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { logger } from './logger';
 import { bindContext, contextFields, currentLogger, secrets, withContext } from '../npm/src/logging/context';
@@ -38,7 +39,8 @@ export function withRequestLogging<
       bindContext({
         http_method: req.method,
         http_route: req.url?.split('?')[0],
-        request_id: header(process.env.SSO_REQUEST_ID_HEADER || 'x-request-id'),
+        request_id: randomUUID(),
+        client_request_id: header(process.env.SSO_REQUEST_ID_HEADER || 'x-request-id'),
         client_session_id: header(process.env.SSO_CLIENT_SESSION_ID_HEADER || 'x-session-id'),
       });
       const started = performance.now();
