@@ -59,6 +59,20 @@ tap.test('redaction preserves useful facts and native errors without changing in
     t.notMatch(JSON.stringify(output), credential);
   t.match(output.msg, 'key c123');
   t.equal(redact({ code: '123456' }).code, '[REDACTED]', 'OAuth codes remain credentials');
+  for (const uri of ['example-app://oauthredirect', 'example-app://auth/callback', 'example-app:/callback']) {
+    t.equal(
+      redact({ redirect_uri: `${uri}?state=native-state` }).redirect_uri,
+      uri,
+      'native callback schemes stay meaningful'
+    );
+  }
+  const redirects = [
+    'https://app.example/callback?state=private-state',
+    'example-app://callback?code=private-code',
+  ];
+  const safeRedirects = ['https://app.example/callback', 'example-app://callback'];
+  t.same(redact({ redirectUrl: redirects }).redirectUrl, safeRedirects);
+  t.equal(redact({ redirectUrl: JSON.stringify(redirects) }).redirectUrl, JSON.stringify(safeRedirects));
   t.same(
     redact({
       webhook_secret: 'webhook',

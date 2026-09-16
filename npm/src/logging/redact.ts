@@ -80,15 +80,26 @@ export function redact(value: unknown, secrets: Secrets = new Map()): any {
           return hint;
         });
         result[key] = Array.isArray(item) ? hints : hints[0];
+      } else if (urlFields.test(name) && Array.isArray(item)) {
+        result[key] = item.map((url) => clean({ url }, depth + 1).url);
       } else if (urlFields.test(name) && typeof item === 'string') {
         try {
+          // Connection APIs also accept a JSON-encoded redirect URL list.
+          if (item.trim().startsWith('[')) {
+            const urls = JSON.parse(item);
+            if (Array.isArray(urls)) {
+              result[key] = JSON.stringify(clean({ [key]: urls }, depth + 1)[key]);
+              continue;
+            }
+          }
           const absolute = /^[a-z][a-z0-9+.-]*:/i.test(item);
           const url = new URL(item, 'http://localhost');
           if (url.password) remember(decodeURIComponent(url.password), '[REDACTED]');
           const setupToken = /^(?:\/api)?\/setup\/([^/]+)/.exec(url.pathname)?.[1];
           if (setupToken) remember(decodeURIComponent(setupToken), '[REDACTED]');
           url.searchParams.forEach((value, key) => clean({ [key]: value }, depth + 1));
-          result[key] = (absolute ? url.origin : '') + url.pathname;
+          url.username = url.password = url.search = url.hash = '';
+          result[key] = absolute ? url.toString() : url.pathname;
         } catch {
           result[key] = '[Invalid URL]';
         }
