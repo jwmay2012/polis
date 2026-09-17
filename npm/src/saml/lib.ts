@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import saml from '@boxyhq/saml20';
 import * as dbutils from '../db/utils';
 import claims from '../saml/claims';
+import * as logContext from '../controller/log-context';
 
 // Validate the SAMLResponse and extract the user profile
 export const extractSAMLResponseAttributes = async (
@@ -9,10 +10,19 @@ export const extractSAMLResponseAttributes = async (
   validateOpts: ValidateOption
 ) => {
   const attributes = await saml.validate(decodedResponse, validateOpts);
+  let subjectSource: string | undefined;
 
   if (attributes && attributes.claims) {
     // We map claims to our attributes id, email, firstName, lastName where possible. We also map original claims to raw
     attributes.claims = claims.map(attributes.claims);
+    const subjectProvided = !!attributes.claims.id;
+    logContext.bindProfile(attributes.claims);
+    logContext.bindContext({ asserted_email_source: 'saml_mapped_claim' });
+    subjectSource = subjectProvided
+      ? 'saml_nameidentifier'
+      : attributes.claims.email
+        ? 'email_sha256'
+        : undefined;
 
     // Some providers don't return the id in the assertion, we set it to a sha256 hash of the email
     if (!attributes.claims.id && attributes.claims.email) {
@@ -28,6 +38,11 @@ export const extractSAMLResponseAttributes = async (
 
   // we'll send a ripemd160 hash of the id, this can be used in the case of email missing it can be used as the local part
   attributes.claims.idHash = dbutils.keyDigest(attributes.claims.id);
+  logContext.bindContext({
+    upstream_subject: attributes.claims.id,
+    subject_source: subjectSource,
+    profile_validated: true,
+  });
 
   return attributes;
 };

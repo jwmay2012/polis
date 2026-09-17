@@ -22,6 +22,7 @@ import * as redirect from './oauth/redirect';
 import * as allowed from './oauth/allowed';
 import { oidcClientConfig } from './oauth/oidc-client';
 import { extractDomainFromLoginHint, filterConnectionsByDomain } from './domain-utils';
+import * as logContext from './log-context';
 
 const deflateRawAsync = promisify(deflateRaw);
 
@@ -64,6 +65,17 @@ export class SSOHandler {
   }): Promise<
     { connection: SAMLSSORecord | OIDCSSORecord } | { redirectUrl: string } | { postForm: string }
   > {
+    const result = await this.findConnection(params);
+    if ('connection' in result) {
+      logContext.bindConnection(result.connection);
+      this.opts.logger.info('SSO connection selected');
+    } else this.opts.logger.info('SSO connection selection required');
+    return result;
+  }
+
+  private async findConnection(
+    params: Parameters<SSOHandler['resolveConnection']>[0]
+  ): Promise<{ connection: SAMLSSORecord | OIDCSSORecord } | { redirectUrl: string } | { postForm: string }> {
     const {
       authFlow,
       originalParams,
@@ -84,6 +96,7 @@ export class SSOHandler {
 
     // If an IdP is specified, find the connection for that IdP.
     if (idp_hint) {
+      logContext.bindContext({ routing_source: 'idp_hint', selected_idp_hint: idp_hint });
       const connection = await this.connection.get(idp_hint);
 
       if (!connection) {
@@ -96,6 +109,7 @@ export class SSOHandler {
       // a connection in another tenant (CWE-639). Reject any hint that the
       // non-hint lookups below would not have returned.
       if (!this.isConnectionInScope(connection, { tenant, product, tenants, entityId })) {
+        logContext.bindContext({ connection_scope_matches: false });
         throw new JacksonError(GENERIC_ERR_STRING, 403, noSSOConnectionErrMessage);
       }
 
@@ -103,6 +117,7 @@ export class SSOHandler {
     }
 
     // Find SAML connections for the app
+    logContext.bindContext({ routing_source: entityId ? 'issuer' : 'tenant_product' });
     if (tenants && tenants.length > 0 && product) {
       const result = await Promise.all(
         tenants.map((tenant) =>
@@ -128,9 +143,11 @@ export class SSOHandler {
     }
 
     // Filter out inactive connections before any routing logic
+    logContext.bindContext({ candidate_count: connections?.length || 0 });
     if (connections) {
       connections = connections.filter(isConnectionActive);
     }
+    logContext.bindContext({ active_candidate_count: connections?.length || 0 });
 
     if (!connections || connections.length === 0) {
       throw new JacksonError(GENERIC_ERR_STRING, 403, noSSOConnectionErrMessage);
@@ -140,6 +157,10 @@ export class SSOHandler {
     // Check if domain-based routing is enabled (via environment variable)
     const domainRoutingEnabled = process.env.ENABLE_DOMAIN_ROUTING !== 'false'; // Default: true
     const strictDomainRouting = process.env.STRICT_DOMAIN_ROUTING === 'true'; // Default: false
+    logContext.bindContext({
+      domain_routing_enabled: domainRoutingEnabled,
+      strict_domain_routing: strictDomainRouting,
+    });
 
     if (domainRoutingEnabled) {
       // In strict mode, require login_hint
@@ -153,10 +174,15 @@ export class SSOHandler {
         if (domain) {
           const originalCount = connections.length;
           const filteredConnections = filterConnectionsByDomain(connections, domain);
+          logContext.bindContext({
+            requested_domain: domain,
+            domain_candidate_count: filteredConnections.length,
+          });
 
           // Only use filtered connections if we found at least one match
           if (filteredConnections.length > 0) {
             connections = filteredConnections;
+            logContext.bindContext({ routing_source: 'email_domain' });
 
             // Log successful domain filtering for debugging
             if (this.opts.logger) {
@@ -239,6 +265,7 @@ export class SSOHandler {
 
     // If more than one, redirect to the connection selection page
     if (connections.length > 1) {
+      logContext.bindContext({ routing_source: 'connection_picker' });
       const url = new URL(`${this.opts.externalUrl}${this.opts.idpDiscoveryPath}`);
 
       // SP initiated flow

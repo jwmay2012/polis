@@ -52,6 +52,9 @@ import { oidcClientConfig } from './oauth/oidc-client';
 import { App } from '../ee/identity-federation/app';
 import * as encrypter from '../db/encrypter';
 import { Encrypted } from '../typings';
+import * as logContext from './log-context';
+import { contextualLogger } from '../logging/context';
+import { extractDomainFromLoginHint } from './domain-utils';
 
 const deflateRawAsync = promisify(deflateRaw);
 
@@ -95,12 +98,13 @@ export class OAuthController implements IOAuthController {
     this.codeStore = codeStore;
     this.tokenStore = tokenStore;
     this.ssoTraces = ssoTraces;
-    this.opts = opts;
+    this.opts = { ...opts, logger: contextualLogger(opts.logger) };
     this.idFedApp = idFedApp;
 
-    this.ssoHandler = new SSOHandler({ connection: connectionStore, session: sessionStore, opts });
+    this.ssoHandler = new SSOHandler({ connection: connectionStore, session: sessionStore, opts: this.opts });
   }
 
+  @logContext.logOperation
   public async authorize(
     body: OAuthReq
   ): Promise<{ redirect_url?: string; authorize_form?: string; error?: string }> {
@@ -122,6 +126,24 @@ export class OAuthController implements IOAuthController {
       login_hint,
       ...oidcParams // Rest of the params will be assumed as OIDC params and will be forwarded to the IdP
     } = body;
+
+    logContext.bindContext({
+      requested_email: typeof login_hint === 'string' ? login_hint : undefined,
+      requested_domain: extractDomainFromLoginHint(login_hint) || undefined,
+      downstream_client_id: client_id,
+      requested_tenant: tenant,
+      requested_product: product,
+      downstream_redirect_uri: redirect_uri,
+      downstream_state_fp: logContext.fingerprint('oauth-state', state),
+      downstream_nonce_fp: logContext.fingerprint('nonce', nonce),
+      requested_scope: scope,
+      downstream_pkce_present: !!code_challenge,
+      downstream_pkce_method: code_challenge_method,
+      force_authn: forceAuthn,
+      prompt: oidcParams.prompt,
+      session_ttl_seconds: this.opts.db.ttl,
+      login_type: 'sp-initiated',
+    });
 
     let requestedTenant;
     let requestedProduct;
@@ -149,6 +171,7 @@ export class OAuthController implements IOAuthController {
 
       requestedScopes = getScopeValues(scope);
       requestedOIDCFlow = requestedScopes.includes('openid');
+      logContext.bindContext({ downstream_protocol: requestedOIDCFlow ? 'oidc' : 'oauth' });
 
       if (tenant && product) {
         const response = await this.ssoHandler.resolveConnection({
@@ -216,6 +239,7 @@ export class OAuthController implements IOAuthController {
             protocol = 'oidc-federation';
             metrics.increment('idfedAuthorize', { protocol, login_type });
             fedApp = await this.idFedApp.get({ id: client_id.replace(clientIDFederatedPrefix, '') });
+            logContext.bindContext({ federation_app_id: fedApp.id });
 
             const response = await this.ssoHandler.resolveConnection({
               tenant: fedApp.tenant,
@@ -240,10 +264,13 @@ export class OAuthController implements IOAuthController {
             }
           } else {
             // If it's not a federated connection, we look for the connection using the client_id
+            logContext.bindContext({ routing_source: 'direct_client_id' });
             connection = await this.connectionStore.get(client_id);
             if (connection) {
               requestedTenant = connection.tenant;
               requestedProduct = connection.product;
+              logContext.bindConnection(connection);
+              this.opts.logger.info('Polis connection selected');
             }
           }
         }
@@ -258,6 +285,7 @@ export class OAuthController implements IOAuthController {
       connectionIsSAML = 'idpMetadata' in connection && connection.idpMetadata !== undefined;
       connectionIsOIDC = 'oidcProvider' in connection && connection.oidcProvider !== undefined;
       protocol = isOIDCFederated ? 'oidc-federation' : connectionIsSAML ? 'saml' : 'oidc';
+      logContext.bindConnection(connection);
 
       if (
         !allowed.redirect(
@@ -294,6 +322,16 @@ export class OAuthController implements IOAuthController {
       upstreamRedirectUri = isPublicClient
         ? publicUpstreamRedirectUri!
         : this.opts.externalUrl + this.opts.oidcPath;
+
+      logContext.bindContext({
+        downstream_client_type: fedApp ? (clientIsPublic ? 'public' : 'confidential') : 'connection',
+        upstream_client_auth: connectionIsOIDC
+          ? isPublicClient
+            ? 'pkce'
+            : 'client_secret_and_pkce'
+          : undefined,
+        upstream_redirect_uri: connectionIsOIDC ? upstreamRedirectUri : undefined,
+      });
 
       if (!isConnectionActive(connection)) {
         throw new JacksonError(GENERIC_ERR_STRING, 403, 'SSO connection is deactivated.');
@@ -385,6 +423,10 @@ export class OAuthController implements IOAuthController {
     // Init sessionId
     const sessionId = crypto.randomBytes(16).toString('hex');
     const relayState = relayStatePrefix + sessionId;
+    logContext.bindContext({
+      polis_session_fp: logContext.fingerprint('polis-session', sessionId),
+      upstream_state_fp: logContext.fingerprint('oauth-state', relayState),
+    });
     // SAML connection: SAML request will be constructed here
     let samlReq, samlReqSigningKey: string | undefined, internalError;
     if (connectionIsSAML) {
@@ -451,9 +493,16 @@ export class OAuthController implements IOAuthController {
           ? saml.request({ ...samlRequestOpts, signingKey: cert.privateKey, publicKey: cert.publicKey })
           : saml.request({ ...samlRequestOpts, signingKey: '', publicKey: '' });
         samlReqSigningKey = cert.privateKey;
+        logContext.bindContext({
+          saml_request_id: samlReq.id,
+          saml_binding: post ? 'HTTP-POST' : 'HTTP-Redirect',
+          saml_signing_algorithm: sigAlg,
+          upstream_redirect_uri: samlRequestOpts.callbackUrl,
+          upstream_issuer: (connection as SAMLSSORecord).idpMetadata.entityID,
+        });
       } catch (err: unknown) {
         const error_description = getErrorMessage(err);
-        this.opts.logger.error(`Authorize error: ${error_description} `);
+        this.opts.logger.error('Unable to create the SAML authorization request', err);
         metrics.increment('oauthAuthorizeError', { protocol, login_type });
         // Save the error trace
         const traceId = await this.ssoTraces.saveTrace({
@@ -517,6 +566,10 @@ export class OAuthController implements IOAuthController {
         oidcCodeVerifier = client.randomPKCECodeVerifier();
         const code_challenge = await client.calculatePKCECodeChallenge(oidcCodeVerifier);
         oidcNonce = client.randomNonce();
+        logContext.bindContext({
+          upstream_nonce_fp: logContext.fingerprint('nonce', oidcNonce),
+          upstream_pkce_method: 'S256',
+        });
         const standardScopes = this.opts.openid?.requestProfileScope
           ? ['openid', 'email', 'profile']
           : ['openid', 'email'];
@@ -537,7 +590,7 @@ export class OAuthController implements IOAuthController {
         }).href;
       } catch (err: unknown) {
         const error_description = getErrorMessage(err);
-        this.opts.logger.error(`Authorize error: ${error_description}`);
+        this.opts.logger.error('Unable to prepare OIDC authorization', err);
         metrics.increment('oauthAuthorizeError', { protocol, login_type });
         // Save the error trace
         const traceId = await this.ssoTraces.saveTrace({
@@ -567,6 +620,7 @@ export class OAuthController implements IOAuthController {
     }
     // Session persistence happens here
     try {
+      logContext.bindContext({ session_created_at: new Date().toISOString() });
       const requested = {
         client_id,
         state,
@@ -613,6 +667,7 @@ export class OAuthController implements IOAuthController {
         requested,
         isPublicClient, // True if client redirect_uri is a public client (mobile/SPA)
         upstreamRedirectUri, // The redirect_uri used when calling upstream IdP
+        telemetry: logContext.continuation(),
         oidcFederated: fedApp
           ? {
               redirectUrl: fedApp.redirectUrl,
@@ -668,9 +723,12 @@ export class OAuthController implements IOAuthController {
             );
           }
         }
+        logContext.bindContext({ saml_request_signed: true });
+        this.opts.logger.info('Polis SAML redirect issued');
         return { redirect_url: redirectUrl, authorize_form: authorizeForm };
       }
       if (connectionIsOIDC) {
+        this.opts.logger.info('Polis OIDC redirect issued');
         return { redirect_url: ssoUrl };
       }
       throw 'Connection appears to be misconfigured';
@@ -702,6 +760,7 @@ export class OAuthController implements IOAuthController {
     }
   }
 
+  @logContext.logOperation
   public async samlResponse(
     body: SAMLResponsePayload
   ): Promise<{ redirect_url?: string; app_select_form?: string; response_form?: string; error?: string }> {
@@ -718,9 +777,16 @@ export class OAuthController implements IOAuthController {
     const { SAMLResponse, idp_hint, RelayState = '' } = body;
     let protocol, login_type;
 
+    logContext.bindContext({
+      upstream_protocol: 'saml',
+      upstream_state_fp: logContext.fingerprint('oauth-state', RelayState),
+    });
+
     try {
       isIdPFlow = !RelayState.startsWith(relayStatePrefix);
       login_type = isIdPFlow ? 'idp-initiated' : 'sp-initiated';
+      logContext.bindContext({ login_type, idp_initiated_enabled: this.opts.idpEnabled });
+
       metrics.increment('oauthResponse', { protocol: 'saml', login_type });
       rawResponse = Buffer.from(SAMLResponse, 'base64').toString();
       issuer = saml.parseIssuer(rawResponse);
@@ -738,20 +804,26 @@ export class OAuthController implements IOAuthController {
         protocol = 'saml';
       }
       sessionId = RelayState.replace(relayStatePrefix, '');
+      logContext.bindContext({
+        polis_session_fp: !isIdPFlow ? logContext.fingerprint('polis-session', sessionId) : undefined,
+        presented_issuer: issuer,
+      });
 
       if (!issuer) {
         throw new JacksonError(GENERIC_ERR_STRING, 403, 'Issuer not found.');
       }
 
       const connections: SAMLSSORecord[] = (
-        await this.connectionStore.getByIndex({ name: IndexNames.EntityID, value: issuer })
+        await this.connectionStore.getByIndex({ name: IndexNames.EntityID, value: issuer! })
       ).data;
 
       if (!connections || connections.length === 0) {
         throw new JacksonError(GENERIC_ERR_STRING, 403, 'SAML connection not found.');
       }
 
-      session = sessionId ? await this.sessionStore.get(sessionId) : null;
+      session = sessionId ? await this.sessionStore.get(sessionId!) : null;
+      logContext.bindContext({ session_lookup: session ? 'hit' : 'miss' });
+      if (session) logContext.bindSession(session, sessionId);
 
       if (!isIdPFlow && !session) {
         throw new JacksonError('Unable to validate state from the origin request.', 403);
@@ -760,6 +832,10 @@ export class OAuthController implements IOAuthController {
       isSAMLFederated = session && 'samlFederated' in session;
       isOIDCFederated = session && 'oidcFederated' in session;
       const isSPFlow = !isIdPFlow && !isSAMLFederated;
+      logContext.bindContext({
+        downstream_protocol: isSAMLFederated ? 'saml' : session?.requested?.oidc ? 'oidc' : 'oauth',
+      });
+
       protocol = isOIDCFederated ? 'oidc-federation' : isSAMLFederated ? 'saml-federation' : 'saml';
       if (protocol !== 'saml') {
         metrics.increment('idfedResponse', { protocol, login_type });
@@ -842,6 +918,7 @@ export class OAuthController implements IOAuthController {
       if (!connection) {
         throw new JacksonError(GENERIC_ERR_STRING, 403, 'SAML connection not found.');
       }
+      logContext.bindConnection(connection);
 
       if (
         session &&
@@ -883,6 +960,16 @@ export class OAuthController implements IOAuthController {
       if (session && session.id) {
         validateOpts['inResponseTo'] = session.id;
       }
+      logContext.bindContext({
+        saml_request_id: session?.id,
+        expected_audience: validateOpts.audience,
+        redirect_allowed: true,
+        certificate_source: validateOpts.publicKey
+          ? 'public_key'
+          : validateOpts.thumbprint
+            ? 'thumbprint'
+            : 'none',
+      });
 
       redirect_uri = ((session && session.redirect_uri) as string) || connection.defaultRedirectUrl;
     } catch (err: unknown) {
@@ -915,13 +1002,21 @@ export class OAuthController implements IOAuthController {
     let profile: SAMLProfile | undefined;
 
     try {
-      profile = await extractSAMLResponseAttributes(rawResponse, validateOpts);
+      profile = await extractSAMLResponseAttributes(rawResponse!, validateOpts);
+      logContext.bindContext({
+        saml_assertion_id: profile.assertionId,
+        saml_session_index: profile.sessionIndex,
+        assertion_expires_at: profile.notOnOrAfter,
+        upstream_issuer: profile.issuer,
+        upstream_audience: profile.audience,
+      });
+      this.opts.logger.info('Polis SAML identity validated');
 
       // This is a federated SAML flow, let's create a new SAMLResponse and POST it to the SP
       if (isSAMLFederated) {
         const { responseForm } = await this.ssoHandler.createSAMLResponse({ profile, session });
 
-        await this.sessionStore.delete(sessionId);
+        await this.sessionStore.delete(sessionId!);
 
         return { response_form: responseForm };
       }
@@ -934,7 +1029,7 @@ export class OAuthController implements IOAuthController {
         params['state'] = session.state;
       }
 
-      await this.sessionStore.delete(sessionId);
+      await this.sessionStore.delete(sessionId!);
 
       return { redirect_url: redirect.success(redirect_uri, params) };
     } catch (err: unknown) {
@@ -943,7 +1038,7 @@ export class OAuthController implements IOAuthController {
         login_type,
       });
       const error_description = getErrorMessage(err);
-      this.opts.logger.error(`SAMLResponse error: ${error_description}`);
+      this.opts.logger.error('Unable to process the SAML response', err);
       // Trace the error
       const traceId = await this.ssoTraces.saveTrace({
         error: error_description,
@@ -982,6 +1077,7 @@ export class OAuthController implements IOAuthController {
     }
   }
 
+  @logContext.logOperation
   public async oidcAuthzResponse(
     body: OIDCAuthzResponsePayload
   ): Promise<{ redirect_url?: string; response_form?: string; error?: string }> {
@@ -997,6 +1093,12 @@ export class OAuthController implements IOAuthController {
     const callbackParams = body;
 
     let RelayState = callbackParams.state || '';
+    logContext.bindContext({
+      upstream_protocol: 'oidc',
+      upstream_state_fp: logContext.fingerprint('oauth-state', RelayState),
+      upstream_code_fp: logContext.fingerprint('oauth-code', callbackParams.code),
+      idp_error_present: !!callbackParams.error,
+    });
     try {
       metrics.increment('oauthResponse', { protocol: 'oidc', login_type });
       if (!RelayState) {
@@ -1004,10 +1106,13 @@ export class OAuthController implements IOAuthController {
       }
 
       RelayState = RelayState.replace(relayStatePrefix, '');
+      logContext.bindContext({ polis_session_fp: logContext.fingerprint('polis-session', RelayState) });
       session = await this.sessionStore.get(RelayState);
+      logContext.bindContext({ session_lookup: session ? 'hit' : 'miss' });
       if (!session) {
         throw new JacksonError('Unable to validate state from the original request.', 403);
       }
+      logContext.bindSession(session, RelayState);
 
       isSAMLFederated = session && 'samlFederated' in session;
       isOIDCFederated = session && 'oidcFederated' in session;
@@ -1016,11 +1121,15 @@ export class OAuthController implements IOAuthController {
       if (protocol !== 'oidc') {
         metrics.increment('idfedResponse', { protocol, login_type });
       }
+      logContext.bindContext({
+        downstream_protocol: isSAMLFederated ? 'saml' : session.requested?.oidc ? 'oidc' : 'oauth',
+      });
       oidcConnection = await this.connectionStore.get(session.id);
 
       if (!oidcConnection) {
         throw new JacksonError(GENERIC_ERR_STRING, 403, 'OIDC connection not found.');
       }
+      logContext.bindConnection(oidcConnection);
 
       if (!isSAMLFederated) {
         redirect_uri = session && session.redirect_uri;
@@ -1082,7 +1191,10 @@ export class OAuthController implements IOAuthController {
     if (callbackParams.error) {
       const { error, error_description } = callbackParams;
       const error_message = error_description || 'Authorization failed at the OIDC provider';
-      this.opts.logger.error(`OIDCResponse error from provider: ${error_message}`);
+
+      this.opts.logger.error(`OIDC provider rejected authorization: ${error_message}`, {
+        oauth_error: error,
+      });
       metrics.increment(protocol === 'oidc' ? 'oauthResponseError' : 'idfedResponseError', {
         protocol,
         login_type,
@@ -1134,6 +1246,11 @@ export class OAuthController implements IOAuthController {
 
     try {
       const client = (await dynamicImport('openid-client')) as typeof import('openid-client');
+      logContext.bindContext({
+        upstream_redirect_uri: sessionUpstreamRedirectUri,
+        upstream_client_auth: sessionIsPublicClient ? 'pkce' : 'client_secret_and_pkce',
+        redirect_allowed: true,
+      });
       const oidcConfig = await oidcClientConfig({
         discoveryUrl,
         metadata,
@@ -1166,7 +1283,9 @@ export class OAuthController implements IOAuthController {
         expectedState: callbackParams.state,
         idTokenExpected: true,
       });
-      profile = await extractOIDCUserProfile(tokens, oidcConfig, session.includeOidcTokensInAssertion);
+      profile = await extractOIDCUserProfile(tokens!, oidcConfig, session.includeOidcTokensInAssertion);
+      logContext.bindProfile(profile.claims);
+      this.opts.logger.info('Polis OIDC identity validated');
 
       if (isSAMLFederated) {
         const { responseForm } = await this.ssoHandler.createSAMLResponse({ profile, session });
@@ -1194,7 +1313,7 @@ export class OAuthController implements IOAuthController {
       });
       const { error, error_description, error_uri, session_state, scope, stack } = err;
       const error_message = error_description || getErrorMessage(err);
-      this.opts.logger.error(`OIDCResponse error: ${error_message}`);
+      this.opts.logger.error('Unable to process the OIDC response', err);
       const traceId = await this.ssoTraces.saveTrace({
         error: error_message,
         context: {
@@ -1262,6 +1381,7 @@ export class OAuthController implements IOAuthController {
       clientSecret: connection.clientSecret,
       requested,
       isIdPFlow,
+      telemetry: logContext.continuation(),
     };
 
     if (session) {
@@ -1271,8 +1391,13 @@ export class OAuthController implements IOAuthController {
     const { hexKey, encVal } = encrypt(codeVal);
 
     await this.codeStore.put(code, encVal);
-
-    return hexKey + '.' + code;
+    const wireCode = hexKey + '.' + code;
+    logContext.bindContext({
+      authorization_code_fp: logContext.fingerprint('oauth-code', wireCode),
+      code_ttl_seconds: this.opts.db.ttl,
+    });
+    this.opts.logger.info('Polis authorization code issued');
+    return wireCode;
   }
 
   /**
@@ -1336,6 +1461,7 @@ export class OAuthController implements IOAuthController {
    *                 expires_in: "300"
    *     x-ory-ratelimit-bucket: polis-public-medium
    */
+  @logContext.logOperation
   public async token(body: OAuthTokenReq, authHeader?: string | null): Promise<OAuthTokenRes> {
     let basic_client_id: string | undefined;
     let basic_client_secret: string | undefined;
@@ -1351,12 +1477,25 @@ export class OAuthController implements IOAuthController {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (err) {
       // no-op
+      logContext.bindContext({ client_auth_header_parse_failed: true });
     }
 
     const { code, grant_type = 'authorization_code', redirect_uri } = body;
     const client_id = 'client_id' in body ? body.client_id : basic_client_id;
     const client_secret = 'client_secret' in body ? body.client_secret : basic_client_secret;
     const code_verifier = 'code_verifier' in body ? body.code_verifier : undefined;
+
+    logContext.bindContext({
+      authorization_code_fp: logContext.fingerprint('oauth-code', code),
+      presented_client_id: client_id,
+      presented_redirect_uri: redirect_uri,
+      downstream_client_id: client_id,
+      client_auth_source:
+        'client_secret' in body || 'client_id' in body ? 'body' : authHeader ? 'basic' : 'none',
+      client_secret_present: !!client_secret,
+      code_verifier_present: !!code_verifier,
+      grant_type,
+    });
 
     metrics.increment('oauthToken');
     let traceContext = {} as SSOTrace['context'];
@@ -1375,6 +1514,7 @@ export class OAuthController implements IOAuthController {
       }
 
       const encCodeVal = await this.codeStore.get(codes[1]);
+      logContext.bindContext({ code_lookup: encCodeVal ? 'hit' : 'miss' });
       if (!encCodeVal) {
         throw new JacksonError('Invalid code', 403);
       }
@@ -1384,6 +1524,18 @@ export class OAuthController implements IOAuthController {
       if (!codeVal || !codeVal.profile) {
         throw new JacksonError('Invalid code', 403);
       }
+
+      if (codeVal.session) logContext.bindSession(codeVal.session);
+      logContext.restoreContinuation(codeVal.telemetry);
+      logContext.bindProfile(codeVal.profile.claims);
+      logContext.bindContext({
+        connection_id: codeVal.clientID,
+        requested_email: codeVal.requested?.login_hint,
+        user_email: codeVal.profile.claims?.email,
+        downstream_state_fp: logContext.fingerprint('oauth-state', codeVal.requested?.state),
+        downstream_nonce_fp: logContext.fingerprint('nonce', codeVal.requested?.nonce),
+        session_present: !!codeVal.session,
+      });
 
       const requestedOIDCFlow = !!codeVal.requested?.oidc;
       const isOIDCFederated = !!(codeVal.session && 'oidcFederated' in codeVal.session);
@@ -1402,6 +1554,7 @@ export class OAuthController implements IOAuthController {
       };
       protocol = codeVal.requested.protocol || 'saml';
       login_type = codeVal.isIdPFlow ? 'idp-initiated' : 'sp-initiated';
+      logContext.bindContext({ login_type, downstream_protocol: requestedOIDCFlow ? 'oidc' : 'oauth' });
 
       if (codeVal.requested?.redirect_uri) {
         if (redirect_uri !== codeVal.requested.redirect_uri) {
@@ -1421,6 +1574,10 @@ export class OAuthController implements IOAuthController {
       }
 
       if (codeVal.session?.code_challenge) {
+        logContext.bindContext({
+          client_auth_branch: 'pkce',
+          downstream_pkce_method: codeVal.session.code_challenge_method,
+        });
         // PKCE flow
         let cv = code_verifier;
         if (!code_verifier) {
@@ -1454,6 +1611,10 @@ export class OAuthController implements IOAuthController {
           const redirectUri = codeVal.requested?.redirect_uri || redirect_uri;
           const publicRedirectUrls = codeVal.session?.oidcFederated?.publicRedirectUrls || [];
           const isPublicClient = publicRedirectUrls.includes(redirectUri);
+          logContext.bindContext({
+            downstream_client_type: isPublicClient ? 'public' : 'confidential',
+            client_auth_branch: isPublicClient ? 'federation_public_pkce' : 'federation_confidential_pkce',
+          });
 
           if (isPublicClient) {
             // Public client (mobile app, SPA): Must use PKCE, no client_secret required
@@ -1473,6 +1634,10 @@ export class OAuthController implements IOAuthController {
           }
         }
       } else if (client_id && client_secret) {
+        logContext.bindContext({
+          client_auth_branch: 'client_secret',
+          downstream_client_type: 'confidential',
+        });
         // check if we have an encoded client_id
         if (client_id !== 'dummy') {
           const sp = getEncodedTenantProduct(client_id);
@@ -1516,6 +1681,7 @@ export class OAuthController implements IOAuthController {
         clientID: codeVal.clientID,
         login_type,
         protocol,
+        telemetry: logContext.continuation(),
       };
 
       let subject = codeVal.profile.claims.id;
@@ -1528,6 +1694,7 @@ export class OAuthController implements IOAuthController {
       }
 
       const requestHasNonce = !!codeVal.requested?.nonce;
+      logContext.bindContext({ issued_subject: subject });
       if (requestedOIDCFlow) {
         const { jwtSigningKeys, jwsAlg } = this.opts.openid ?? {};
         if (!jwtSigningKeys || !isJWSKeyPairLoaded(jwtSigningKeys)) {
@@ -1553,22 +1720,39 @@ export class OAuthController implements IOAuthController {
           .sign(signingKey);
         tokenVal.id_token = id_token;
         tokenVal.claims.sub = subject;
+        logContext.bindContext({
+          id_token_fp: logContext.fingerprint('id-token', id_token),
+          issued_token_alg: jwsAlg,
+          issued_token_kid: kid,
+          issued_token_issuer: this.opts.externalUrl,
+          issued_token_audience: tokenVal.requested.client_id,
+          issued_nonce_fp: logContext.fingerprint('nonce', claims.nonce),
+        });
       }
+
+      tokenVal.telemetry = logContext.continuation();
 
       const { hexKey, encVal } = encrypt(tokenVal);
 
       await this.tokenStore.put(token, encVal);
+      const wireToken = hexKey + '.' + token;
+      logContext.bindContext({
+        access_token_fp: logContext.fingerprint('access-token', wireToken),
+        token_ttl_seconds: this.opts.db.ttl,
+      });
 
       // delete the code
       try {
         await this.codeStore.delete(codes[1]);
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (_err) {
-        // ignore error
+      } catch (err) {
+        this.opts.logger.warn('Token issued, but authorization code cleanup failed', {
+          err,
+          token_issued: true,
+        });
       }
 
       const tokenResponse: OAuthTokenRes = {
-        access_token: hexKey + '.' + token,
+        access_token: wireToken,
         token_type: 'bearer',
         expires_in: this.opts.db.ttl!,
       };
@@ -1577,6 +1761,7 @@ export class OAuthController implements IOAuthController {
         tokenResponse.id_token = tokenVal.id_token;
       }
 
+      this.opts.logger.info('Polis token redemption succeeded');
       return tokenResponse;
     } catch (err: any) {
       metrics.increment('oauthTokenError', { protocol, login_type });
@@ -1633,18 +1818,29 @@ export class OAuthController implements IOAuthController {
    *                 requested: {}
    *     x-ory-ratelimit-bucket: polis-public-high
    */
+  @logContext.logOperation
   public async userInfo(token: string): Promise<Profile> {
+    logContext.bindContext({ access_token_fp: logContext.fingerprint('access-token', token) });
     const tokens = token.split('.');
     if (tokens.length !== 2) {
       throw new JacksonError('Invalid token', 403);
     }
 
     const encRsp = await this.tokenStore.get(tokens[1]);
+    logContext.bindContext({ token_lookup: encRsp ? 'hit' : 'miss' });
     if (!encRsp) {
       throw new JacksonError('Invalid token', 403);
     }
 
     const rsp = decrypt(encRsp, tokens[0]);
+    logContext.restoreContinuation(rsp?.telemetry);
+    logContext.bindProfile(rsp?.claims);
+    logContext.bindContext({
+      connection_id: rsp?.clientID,
+      requested_email: rsp?.requested?.login_hint,
+      returned_profile_id: rsp?.claims?.id,
+      returned_subject: rsp?.claims?.sub,
+    });
 
     const traceContext: SSOTrace['context'] = {
       tenant: rsp.requested?.tenant,
@@ -1665,6 +1861,7 @@ export class OAuthController implements IOAuthController {
       throw new JacksonError('Invalid token', 403);
     }
 
+    this.opts.logger.info('Polis userinfo served');
     return { ...rsp.claims, requested: rsp.requested };
   }
 }

@@ -23,6 +23,7 @@ import { BrandingController } from './ee/branding';
 import SSOTraces from './sso-traces';
 import EventController from './event';
 import { ProductController } from './ee/product';
+import { contextualLogger } from './logging/context';
 
 const TRACES_TTL_DEFAULT = 7 * 24 * 60 * 60;
 
@@ -69,7 +70,7 @@ const defaultOpts = (opts: JacksonOption): JacksonOptionWithRequiredLogger => {
     warn: console.warn.bind(console),
   };
 
-  newOpts.logger = { ...defaultLogger, ...newOpts.logger } as RequiredLogger;
+  newOpts.logger = contextualLogger({ ...defaultLogger, ...newOpts.logger });
 
   return newOpts as JacksonOptionWithRequiredLogger;
 };

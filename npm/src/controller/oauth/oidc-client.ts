@@ -5,6 +5,8 @@ import { JacksonError } from '../error';
 import { URL } from 'url';
 import { SSOTrace, SSOTracesInstance } from '../../typings';
 import { dynamicImport, GENERIC_ERR_STRING } from '../utils';
+import { currentLogger, secrets } from '../../logging/context';
+import { redact } from '../../logging/redact';
 
 const createCustomFetch = (ssoTraces: { instance: SSOTracesInstance; context: SSOTrace['context'] }) => {
   return async (url: string | URL, options: CustomFetchOptions): Promise<Response> => {
@@ -29,6 +31,19 @@ const createCustomFetch = (ssoTraces: { instance: SSOTracesInstance; context: SS
         headers: Object.fromEntries(headers.entries()),
       };
       const request = parsedUrl.protocol === 'https:' ? https.request : http.request;
+      const started = performance.now();
+      const endpoint = parsedUrl.origin + parsedUrl.pathname;
+      const facts = {
+        upstream_endpoint: endpoint,
+        upstream_http_method: requestOptions.method,
+      };
+      redact(
+        {
+          headers: Object.fromEntries(headers),
+          body: options.body instanceof URLSearchParams ? Object.fromEntries(options.body) : undefined,
+        },
+        secrets()
+      );
 
       const req = request(requestOptions, (res) => {
         let data = '';
@@ -38,6 +53,14 @@ const createCustomFetch = (ssoTraces: { instance: SSOTracesInstance; context: SS
         });
 
         res.on('end', () => {
+          currentLogger().info('Received response from upstream IdP', {
+            ...facts,
+            upstream_http_status: res.statusCode,
+            upstream_duration_ms: Math.round((performance.now() - started) * 1000) / 1000,
+            idp_request_id:
+              res.headers['x-ms-request-id'] || res.headers['request-id'] || res.headers['x-request-id'],
+            idp_correlation_id: res.headers['x-ms-correlation-id'] || res.headers['x-correlation-id'],
+          });
           const response = new Response(data, {
             status: res.statusCode,
             statusText: res.statusMessage,
@@ -49,6 +72,11 @@ const createCustomFetch = (ssoTraces: { instance: SSOTracesInstance; context: SS
       });
 
       req.on('error', (error) => {
+        currentLogger().warn('Unable to reach upstream IdP', {
+          ...facts,
+          upstream_duration_ms: Math.round((performance.now() - started) * 1000) / 1000,
+          err: error,
+        });
         ssoTraces.instance.saveTrace({
           error: `Fetch failed for OIDC IdP endpoint: ${parsedUrl.toString()}`,
           context: ssoTraces.context,

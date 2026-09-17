@@ -3,9 +3,10 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import jackson from '@lib/jackson';
 import { setErrorCookieAndRedirect } from '@lib/utils';
 import { OIDCAuthzResponsePayload } from '@boxyhq/saml-jackson';
+import { withRequestLogging } from '@lib/request-logging';
 import { logger } from '@lib/logger';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     if (req.method !== 'GET') {
       throw { message: 'Method not allowed', statusCode: 405 };
@@ -13,14 +14,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const { oauthController } = await jackson();
 
-    const { redirect_url, response_form, error } = await oauthController.oidcAuthzResponse(
+    const { redirect_url, response_form } = await oauthController.oidcAuthzResponse(
       req.query as OIDCAuthzResponsePayload
     );
 
     if (redirect_url) {
-      if (error) {
-        logger.error(`Error processing OIDC IdP response: ${error}`);
-      }
       res.redirect(302, redirect_url);
     }
 
@@ -30,8 +28,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   } catch (err: any) {
     const { message, statusCode = 500 } = err;
-    logger.error(err, 'Error processing OIDC IdP response');
+    logger.error({ err }, 'Unable to handle OAuth request');
 
     setErrorCookieAndRedirect(res, { message, statusCode });
   }
 }
+
+export default withRequestLogging(handler);

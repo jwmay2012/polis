@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import saml from '@boxyhq/saml20';
+import * as logContext from './log-context';
 import type { Configuration, authorizationCodeGrant } from 'openid-client';
 import * as dbutils from '../db/utils';
 import type {
@@ -72,6 +73,7 @@ export const OAuthErrorResponse = ({
   redirect_uri,
   state,
 }: OAuthErrorHandlerParams) => {
+  logContext.currentLogger().error(error_description || 'OAuth authorization failed', { oauth_error: error });
   return redirect.success(redirect_uri, { error, error_description, state });
 };
 
@@ -306,6 +308,7 @@ export const extractOIDCUserProfile = async (
   }
 
   profile.claims.raw = rawClaims;
+  logContext.bindOidcProfile(idTokenClaims, userinfo, profile.claims, tokens.id_token);
 
   return profile;
 };
