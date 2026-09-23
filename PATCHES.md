@@ -93,6 +93,11 @@ rebase/release branch. Published tags are never moved.
    routing priority and responses are unchanged. See `TELEMETRY.md`. Main files:
    `npm/src/logging/`, `npm/src/controller/log-context.ts`, `lib/logger.ts`,
    `lib/request-logging.ts`, and `npm/test/sso/logging.test.ts`.
+9. **Return the store's next cursor from product connection lookup.**
+   `getConnectionsByProduct` must return the cursor issued by the store, not
+   echo the request cursor, including when the last page has no cursor.
+   Files: `npm/src/controller/api.ts`,
+   `npm/test/controller/product-pagination.test.ts`.
 
 Invariants the series must keep, and the tests that hold them:
 
