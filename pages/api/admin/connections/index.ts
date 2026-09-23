@@ -2,9 +2,10 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 import jackson from '@lib/jackson';
 import { oidcMetadataParse, parsePaginateApiParams, strategyChecker } from '@lib/utils';
-import { adminPortalSSODefaults } from '@lib/env';
+import { adminPortalSSODefaults, jacksonOptions } from '@lib/env';
 import { defaultHandler } from '@lib/api';
 import { ApiError } from '@lib/error';
+import { collectInventory } from '@lib/admin-inventory';
 import { validateDevelopmentModeLimits } from '@lib/development-mode';
 
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
@@ -27,6 +28,29 @@ const handleGET = async (req: NextApiRequest, res: NextApiResponse) => {
   const { pageOffset, pageLimit, pageToken } = parsePaginateApiParams(req.query);
 
   const { tenant: adminPortalSSOTenant, product: adminPortalSSOProduct } = adminPortalSSODefaults;
+
+  if (req.query.inventory === 'true' && isSystemSSO === undefined) {
+    const { product } = req.query;
+    if (typeof product !== 'string' || !product) {
+      throw new ApiError('Provide a product for the connection inventory.', 400);
+    }
+    const db = jacksonOptions.db;
+    const inventory = await collectInventory(
+      (pagination) => connectionAPIController.getConnectionsByProduct({ product, ...pagination }),
+      (connection) => ({
+        id: connection.clientID,
+        name: connection.name,
+        tenant: connection.tenant,
+        product: connection.product,
+        active: !('deactivated' in connection) || connection.deactivated === false,
+        isSystemSSO:
+          adminPortalSSOTenant === connection.tenant && adminPortalSSOProduct === connection.product,
+      }),
+      db && 'engine' in db && db.engine === 'dynamodb'
+    );
+    res.setHeader('jackson-inventory-complete', String(inventory.complete));
+    return res.json(inventory.data);
+  }
 
   const paginatedConnectionList = await adminController.getAllConnection(pageOffset, pageLimit, pageToken);
 

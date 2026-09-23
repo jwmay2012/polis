@@ -98,6 +98,15 @@ rebase/release branch. Published tags are never moved.
    echo the request cursor, including when the last page has no cursor.
    Files: `npm/src/controller/api.ts`,
    `npm/test/controller/product-pagination.test.ts`.
+10. **Make federation membership visible from either admin screen.**
+    A shared tenant picker wraps and scrolls, shows connection names/counts,
+    and preserves exact stored keys and pre-provisioned tenants. The connection
+    editor's Applications panel edits the existing tenant-wide membership;
+    it is absent from setup links and portal-SSO settings. Normal admin creation
+    opens the new connection's editor. No IDs, routing rules, schema or data
+    migrations change. Files: `internal-ui/src/identity-federation/TenantPicker.tsx`,
+    `components/connection/Applications.tsx`, the two existing admin list routes,
+    and `lib/admin-inventory.ts`.
 
 Invariants the series must keep, and the tests that hold them:
 
@@ -149,8 +158,21 @@ Invariants the series must keep, and the tests that hold them:
   mutating application objects. Pino child bindings and formatted messages pass
   through the same redaction. `npm/test/api/request_logging.test.ts`,
   `npm/test/api/file_logger.test.ts`
+- Admin inventory mode is session-protected, product-scoped, metadata-only and
+  bounded to 100 store pages. Cursor stores stop only at the absent next cursor;
+  offset stores advance by the returned count until an empty page. The
+  `jackson-inventory-complete` header is true only after a finished scan. Failed,
+  partial or older-replica responses cannot prove a tenant is missing. Ordinary
+  paginated responses remain unchanged. `npm/test/api/admin-inventory.test.ts`,
+  `npm/test/api/admin-inventory-routes.test.ts`
+- Tenant membership compares exact keys. The primary tenant stays locked,
+  including keyboard removal; unknown keys remain editable. Membership toggles
+  GET the latest app, then PATCH only its ID and merged tenant list. This limits
+  stale-page overwrites but is not an atomic compare-and-swap: concurrent writes
+  between GET and PATCH still follow the existing last-write-wins contract.
+  `e2e/ui/connection-admin.spec.ts`
 
-Upstream status: none of the patches is upstream. Patches 1, 4, 5, and 6 are
+Upstream status: none of the patches is upstream. Patches 1, 4, 5, 6, and 9 are
 generic enough to propose after this release is accepted.
 
 ## Rebasing onto a newer upstream
@@ -185,6 +207,14 @@ requires upstream's Postgres, Redis, MongoDB, CockroachDB, and other service
 matrix. A bare `npm test` enters that file and stalls without those services.
 The recursive `find` intentionally includes every other test, including nested
 Directory Sync tests and `test/setup-link.test.ts`.
+
+For the connection-administration browser tests, use
+`npx playwright test --config playwright.connection-admin.config.ts`.
+This starts its own loopback-only memory-store instance with synthetic admin
+credentials and local metadata; it does not run the default E2E setup or use
+live SSO accounts. Install the matching Chromium with `npx playwright install chromium`
+first. These tests cover inventories larger than the configured page limit,
+primary/unknown tenants, bounded scrolling, membership edits and view boundaries.
 
 Check the library's own TypeScript configuration as well as the application's.
 The root Next.js configuration accepts newer builtins than the standalone

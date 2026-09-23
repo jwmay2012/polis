@@ -146,3 +146,22 @@ span.react-datepicker__navigation-icon {
   padding: 0.25rem 0.5rem !important;
   border-radius: 0.3rem !important;
 }
+
+.tenant-picker .react-tagsinput {
+  height: auto;
+  min-height: 3rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.tenant-picker .react-tagsinput-input {
+  width: auto;
+  min-width: 8rem;
+}
+
+.tenant-picker .react-tagsinput-tag {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}

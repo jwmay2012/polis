@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Button } from 'rsc-daisyui';
 import type { IdentityFederationApp } from '../types';
-import TagsInput from 'react-tagsinput';
 import { useTranslation } from 'next-i18next';
 import { useFormik } from 'formik';
 import EyeIcon from '@heroicons/react/24/outline/EyeIcon';
@@ -12,6 +11,7 @@ import { defaultHeaders } from '../utils';
 import { ItemList } from '@boxyhq/react-ui/shared';
 import { CopyToClipboardButton } from '../shared/InputWithCopyButton';
 import { IconButton } from '../shared/IconButton';
+import { TenantPicker } from './TenantPicker';
 
 type EditApp = Pick<
   IdentityFederationApp,
@@ -26,7 +26,7 @@ export const Edit = ({
   excludeFields,
 }: {
   app: IdentityFederationApp;
-  urls: { patch: string; jacksonUrl: string };
+  urls: { patch: string; jacksonUrl: string; connections?: string };
   onUpdate?: (data: IdentityFederationApp) => void;
   onError?: (error: Error) => void;
   excludeFields?: 'product'[];
@@ -42,7 +42,7 @@ export const Edit = ({
     initialValues: {
       name: app.name || '',
       acsUrl: app.acsUrl || '',
-      tenants: app.tenants || [],
+      tenants: (app.tenants || []).filter((tenant) => tenant !== app.tenant),
       redirectUrl: app.redirectUrl || [],
       publicRedirectUrls: app.publicRedirectUrls || [],
     },
@@ -223,25 +223,13 @@ export const Edit = ({
                     />
                   </label>
                 )}
-                <label className='form-control w-full'>
-                  <label className='label'>
-                    <span className='label-text'>{t('bui-fs-tenants')}</span>
-                  </label>
-                  <TagsInput
-                    value={formik.values.tenants}
-                    onChange={(tags: string[]) => formik.setFieldValue('tenants', tags)}
-                    onlyUnique={true}
-                    inputProps={{
-                      placeholder: t('bui-fs-enter-tenant'),
-                      autoComplete: 'off',
-                    }}
-                    focusedClassName='input-focused'
-                    addOnBlur={true}
-                  />
-                  <label className='label'>
-                    <span className='label-text-alt'>{t('bui-fs-tenants-mapping-desc')}</span>
-                  </label>
-                </label>
+                <TenantPicker
+                  value={formik.values.tenants || []}
+                  onChange={(tenants) => formik.setFieldValue('tenants', tenants)}
+                  primaryTenant={app.tenant}
+                  product={app.product}
+                  connectionsUrl={urls.connections}
+                />
               </div>
             </Card.Body>
             <Card.Footer>
