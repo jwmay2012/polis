@@ -18,7 +18,7 @@ const NewApp = ({ hasValidLicense, samlAudience }: { hasValidLicense: boolean; s
     <div className='space-y-4'>
       <LinkBack href='/admin/identity-federation' />
       <NewIdentityFederationApp
-        urls={{ createApp: '/api/admin/identity-federation' }}
+        urls={{ createApp: '/api/admin/identity-federation', connections: '/api/admin/connections' }}
         onSuccess={(data) => {
           successToast(t('identity_federation_new_success'));
           router.replace(`/admin/identity-federation/${data.id}/edit`);

@@ -824,7 +824,7 @@ export class ConnectionAPIController implements IConnectionAPIController {
       pageToken
     );
 
-    return { data: transformConnections(connections.data), pageToken };
+    return { data: transformConnections(connections.data), pageToken: connections.pageToken };
   }
 
   public async getCount(idx?: Index) {

@@ -16,7 +16,7 @@ export const EditIdentityFederationApp = ({
   onDelete,
   excludeFields,
 }: {
-  urls: { getApp: string; updateApp: string; deleteApp: string; jacksonUrl: string };
+  urls: { getApp: string; updateApp: string; deleteApp: string; jacksonUrl: string; connections?: string };
   onUpdate?: (data: IdentityFederationApp) => void;
   onError?: (error: Error) => void;
   onDelete?: () => void;
@@ -66,7 +66,7 @@ export const EditIdentityFederationApp = ({
       <div className='flex flex-col gap-6'>
         <Edit
           app={app}
-          urls={{ patch: urls.updateApp, jacksonUrl: urls.jacksonUrl }}
+          urls={{ patch: urls.updateApp, jacksonUrl: urls.jacksonUrl, connections: urls.connections }}
           onError={onError}
           onUpdate={(data) => {
             mutate({ data });

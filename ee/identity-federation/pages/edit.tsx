@@ -25,6 +25,7 @@ const UpdateApp = ({ hasValidLicense, jacksonUrl }: { hasValidLicense: boolean; 
           updateApp: `/api/admin/identity-federation/${id}`,
           deleteApp: `/api/admin/identity-federation/${id}`,
           jacksonUrl,
+          connections: '/api/admin/connections',
         }}
         onUpdate={() => {
           successToast(t('identity_federation_update_success'));

@@ -6,6 +6,7 @@ import type { OIDCSSORecord, SAMLSSORecord } from '@boxyhq/saml-jackson';
 import { EditSAMLConnection, EditOIDCConnection } from '@boxyhq/react-ui/sso';
 import { BOXYHQ_UI_CSS } from '@components/styles';
 import PublicClientSettings from './PublicClientSettings';
+import Applications from './Applications';
 
 type EditProps = {
   connection: SAMLSSORecord | OIDCSSORecord;
@@ -44,6 +45,9 @@ const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: 
             {t('edit_sso_connection')}
           </h2>
         </div>
+        {!setupLinkToken && !isSettingsView && (
+          <Applications key={connection.clientID} tenant={connection.tenant} product={connection.product} />
+        )}
         <div className='min-w-[28rem] rounded border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800'>
           {connectionIsSAML && (
             <EditSAMLConnection

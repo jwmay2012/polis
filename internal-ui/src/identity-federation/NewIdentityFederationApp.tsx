@@ -1,5 +1,5 @@
 import { useFormik } from 'formik';
-import TagsInput from 'react-tagsinput';
+import { useState } from 'react';
 import { Card, Button } from 'rsc-daisyui';
 import { useTranslation } from 'next-i18next';
 import type { IdentityFederationApp } from '../types';
@@ -8,6 +8,7 @@ import { defaultHeaders } from '../utils';
 import { AttributesMapping } from './AttributesMapping';
 import { PageHeader } from '../shared';
 import { ItemList } from '@boxyhq/react-ui/shared';
+import { TenantPicker } from './TenantPicker';
 
 type NewIdentityFederationAppType = Pick<
   IdentityFederationApp,
@@ -32,13 +33,14 @@ export const NewIdentityFederationApp = ({
   excludeFields,
 }: {
   samlAudience?: string;
-  urls: { createApp: string };
+  urls: { createApp: string; connections?: string };
   onSuccess?: (data: IdentityFederationApp) => void;
   onError?: (error: Error) => void;
   onEntityIdGenerated?: (entityId: string) => void;
   excludeFields?: 'product'[];
 }) => {
   const { t } = useTranslation('common');
+  const [inventoryProduct, setInventoryProduct] = useState('');
 
   const initialValues: NewIdentityFederationAppType = {
     type: 'saml',
@@ -165,6 +167,10 @@ export const NewIdentityFederationApp = ({
                 name='product'
                 value={formik.values.product}
                 onChange={formik.handleChange}
+                onBlur={(event) => {
+                  formik.handleBlur(event);
+                  setInventoryProduct(event.target.value);
+                }}
                 required
               />
             </label>
@@ -240,25 +246,13 @@ export const NewIdentityFederationApp = ({
               </label>
             </label>
           )}
-          <label className='form-control w-full'>
-            <label className='label'>
-              <span className='label-text'>{t('bui-fs-tenants')}</span>
-            </label>
-            <TagsInput
-              value={formik.values.tenants}
-              onChange={(tags: string[]) => formik.setFieldValue('tenants', tags)}
-              onlyUnique={true}
-              inputProps={{
-                placeholder: t('bui-fs-enter-tenant'),
-                autoComplete: 'off',
-              }}
-              focusedClassName='input-focused'
-              addOnBlur={true}
-            />
-            <label className='label'>
-              <span className='label-text-alt'>{t('bui-fs-tenants-mapping-desc')}</span>
-            </label>
-          </label>
+          <TenantPicker
+            value={formik.values.tenants || []}
+            onChange={(tenants) => formik.setFieldValue('tenants', tenants)}
+            primaryTenant={formik.values.tenant}
+            product={formik.values.product || ''}
+            connectionsUrl={formik.values.product === inventoryProduct ? urls.connections : undefined}
+          />
           {connectionIsSAML && (
             <label className='form-control w-full'>
               <div className='label'>

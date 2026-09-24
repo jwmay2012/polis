@@ -40,7 +40,16 @@ const CreateConnection = ({
             saml: fieldsToExclude,
             oidc: fieldsToExclude,
           }}
-          successCallback={() => router.replace(redirectUrl)}
+          successCallback={({ connection }) => {
+            // The vendor callback passes the API's data envelope, despite its unwrapped record type.
+            const clientID =
+              (connection as { data?: { clientID?: string } })?.data?.clientID || connection?.clientID;
+            router.replace(
+              !isSettingsView && clientID
+                ? `/admin/sso-connection/edit/${encodeURIComponent(clientID)}`
+                : redirectUrl
+            );
+          }}
           errorCallback={(errMessage) => errorToast(errMessage)}
           classNames={BOXYHQ_UI_CSS}
         />
