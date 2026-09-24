@@ -15,6 +15,7 @@ import { JacksonError } from '../../controller/error';
 import { getDefaultCertificate } from '../../saml/x509';
 import { IndexNames, validateTenantAndProduct } from '../../controller/utils';
 import { throwIfInvalidLicense } from '../common/checkLicense';
+import type { RoutingController } from '../../controller/routing';
 
 type NewAppParams = Pick<
   IdentityFederationApp,
@@ -40,10 +41,20 @@ type NewAppParams = Pick<
 export class App {
   protected store: Storable;
   private opts: JacksonOption;
+  private routingController?: RoutingController;
 
-  constructor({ store, opts }: { store: Storable; opts: JacksonOption }) {
+  constructor({
+    store,
+    opts,
+    routingController,
+  }: {
+    store: Storable;
+    opts: JacksonOption;
+    routingController?: RoutingController;
+  }) {
     this.store = store;
     this.opts = opts;
+    this.routingController = routingController;
   }
 
   /**
@@ -612,12 +623,16 @@ export class App {
     await throwIfInvalidLicense(this.opts.polisLicenseKey);
 
     if ('id' in params) {
-      return await this.store.delete(params.id);
+      await this.routingController?.assertUnused({ app: params.id });
+      await this.store.delete(params.id);
+      return await this.routingController?.removeManaged(params.id);
     }
 
     if ('tenant' in params && 'product' in params) {
       const id = fedAppID(params.tenant, params.product, params.type);
-      return await this.store.delete(id);
+      await this.routingController?.assertUnused({ app: id });
+      await this.store.delete(id);
+      return await this.routingController?.removeManaged(id);
     }
 
     throw new JacksonError('Provide either the `id` or `tenant` and `product` to delete the app', 400);

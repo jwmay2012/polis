@@ -20,6 +20,7 @@ const unAuthenticatedApiRoutes = [
   '/api/setup/**',
   '/api/branding',
   '/api/error',
+  '/api/sso/resolve',
 ];
 
 export async function proxy(req: NextRequest) {

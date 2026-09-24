@@ -42,7 +42,8 @@ export class SSOPage {
     this.redirectURLSInput = page
       .getByRole('group')
       .filter({ hasText: 'Allowed redirect URLs' })
-      .locator(page.getByRole('textbox').first());
+      .locator('input')
+      .first();
     this.defaultRedirectURLInput = this.page.getByLabel('Default redirect URL');
     this.metadataUrlInput = this.page.getByLabel('Metadata URL');
     this.oidcDiscoveryUrlInput = this.page.getByLabel('Well-known URL of OpenID Provider');
@@ -90,6 +91,11 @@ export class SSOPage {
     // Fill the product for the connection
     await this.productInput.fill(product || ADMIN_PORTAL_PRODUCT);
     // Fill the Allowed redirect URLs for the connection
+    const direct = this.page.getByText('Advanced: Direct application integration', { exact: true });
+    if (await direct.count()) {
+      await direct.click();
+      await this.page.getByLabel('Enable direct application integration', { exact: true }).check();
+    }
 
     await this.redirectURLSInput.fill(baseURL!);
     // Fill the default redirect URLs for the connection
