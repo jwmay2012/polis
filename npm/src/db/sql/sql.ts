@@ -15,6 +15,7 @@ import { DataSource, DataSourceOptions, In, IsNull } from 'typeorm';
 import * as dbutils from '../utils';
 import * as mssql from './mssql';
 import { parsePGOptions } from '../utils';
+import { JacksonError } from '../../controller/error';
 
 class Sql implements DatabaseDriver {
   private options: DatabaseOption;
@@ -352,6 +353,70 @@ class Sql implements DatabaseDriver {
 
     return await this.storeRepository.remove({
       key: dbKey,
+    });
+  }
+
+  async putIfMatch(
+    namespace: string,
+    key: string,
+    val: Encrypted,
+    expected: Encrypted | null,
+    ttl = 0,
+    ...indexes: Index[]
+  ) {
+    if (this.options.engine !== 'sql' || this.options.type !== 'postgres')
+      throw new JacksonError('Conditional SQL writes currently require PostgreSQL.', 501);
+    return this.dataSource.transaction(async (manager) => {
+      const dbKey = dbutils.key(namespace, key);
+      const fields = {
+        value: val.value,
+        iv: val.iv ?? null,
+        tag: val.tag ?? null,
+        modifiedAt: new Date().toISOString(),
+      };
+      if (expected === null) {
+        const inserted = await manager
+          .createQueryBuilder()
+          .insert()
+          .into(this.JacksonStore)
+          .values({ key: dbKey, namespace, ...fields })
+          .orIgnore()
+          .returning('key')
+          .execute();
+        if (inserted.raw.length !== 1) return false;
+      } else {
+        const changed = await manager.update(
+          this.JacksonStore,
+          { key: dbKey, value: expected.value, iv: expected.iv ?? IsNull(), tag: expected.tag ?? IsNull() },
+          fields
+        );
+        if (changed.affected !== 1) return false;
+      }
+      if (ttl) await manager.save(this.JacksonTTL, { key: dbKey, expiresAt: Date.now() + ttl * 1000 });
+      for (const index of indexes) {
+        const indexKey = dbutils.keyForIndex(namespace, index);
+        if (!(await manager.findOneBy(this.JacksonIndex, { key: indexKey, storeKey: dbKey }))) {
+          await manager.save(this.JacksonIndex, { key: indexKey, store: { key: dbKey } });
+        }
+      }
+      return true;
+    });
+  }
+
+  async deleteIfMatch(namespace: string, key: string, expected: Encrypted) {
+    if (this.options.engine !== 'sql' || this.options.type !== 'postgres')
+      throw new JacksonError('Conditional SQL writes currently require PostgreSQL.', 501);
+    return this.dataSource.transaction(async (manager) => {
+      const dbKey = dbutils.key(namespace, key);
+      const removed = await manager.delete(this.JacksonStore, {
+        key: dbKey,
+        value: expected.value,
+        iv: expected.iv ?? IsNull(),
+        tag: expected.tag ?? IsNull(),
+      });
+      if (removed.affected !== 1) return false;
+      await manager.delete(this.JacksonTTL, { key: dbKey });
+      return true;
     });
   }
 

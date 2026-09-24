@@ -107,6 +107,19 @@ rebase/release branch. Published tags are never moved.
     migrations change. Files: `internal-ui/src/identity-federation/TenantPicker.tsx`,
     `components/connection/Applications.tsx`, the two existing admin list routes,
     and `lib/admin-inventory.ts`.
+11. **Publish application-scoped email/domain routes independently of connections.**
+    Exact emails win over domains; drafts are inert. Shared lookup distinguishes
+    missing policy from required-but-unavailable. Per-match revisions protect
+    confirmed moves and withdrawals. Retirement is a separate, reported action.
+    The private resolver's application comes from server configuration. Ordinary
+    app/connection deletion checks complete inventories before removing references.
+    Existing apps stay on legacy routing until deliberate import and activation.
+    No tenants, subjects or schema are rewritten. See `ROUTING.md` for the data
+    transition, limitations and tests.
+    PostgreSQL and memory support conditional create/update/delete against stored
+    bytes without changing the schema; unsupported engines refuse these operations.
+    Failed comparisons leave indexes/TTL unchanged. Ordinary storage retains its
+    existing contract, and routing revisions do not depend on encryption or clocks.
 
 Invariants the series must keep, and the tests that hold them:
 
@@ -121,7 +134,7 @@ Invariants the series must keep, and the tests that hold them:
 - A public upstream redirect is used only when both the downstream client is
   public and the connection has `oidcPublicUpstreamRedirectUri`.
   `npm/test/sso/public_client.test.ts`
-- Strict routing needs exactly one active connection for the hinted domain,
+- Legacy strict routing needs exactly one active connection for the hinted domain,
   even when only one connection exists in total. An explicit in-scope
   `idp_hint` remains authoritative with a conflicting or absent `login_hint`.
   `npm/test/sso/domain_routing.test.ts`, `npm/test/controller/domain-utils.test.ts`
@@ -171,6 +184,18 @@ Invariants the series must keep, and the tests that hold them:
   stale-page overwrites but is not an atomic compare-and-swap: concurrent writes
   between GET and PATCH still follow the existing last-write-wins contract.
   `e2e/ui/connection-admin.spec.ts`
+- Published routing reads exact-email then domain bindings before legacy selection.
+  Known unavailable targets never fall through. Deleting an unused app also clears
+  its activation marker, so same-ID recreation does not inherit explicit-only mode.
+  `npm/test/controller/routing.test.ts`, `npm/test/sso/domain_routing.test.ts`
+- Live routing writes are conditional, including creation and withdrawal; unsupported
+  engines refuse them. Failed comparisons change neither TTL nor indexes. Complete,
+  current-content scans guard app and connection deletion before any target is removed.
+  `npm/test/controller/conditional-store.test.ts`, `npm/test/db/conditional-postgres.test.ts`,
+  `npm/test/controller/routing.test.ts`
+- Discovery exposes only the server-configured application's decision, never a catalog.
+  Its exact unauthenticated path must remain excluded from public ingress; publication
+  stays admin-session protected. `e2e/ui/routing-admin.spec.ts`
 
 Upstream status: none of the patches is upstream. Patches 1, 4, 5, 6, and 9 are
 generic enough to propose after this release is accepted.
