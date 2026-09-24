@@ -24,6 +24,7 @@ import SSOTraces from './sso-traces';
 import EventController from './event';
 import { ProductController } from './ee/product';
 import { contextualLogger } from './logging/context';
+import { RoutingController } from './controller/routing';
 
 const TRACES_TTL_DEFAULT = 7 * 24 * 60 * 60;
 
@@ -91,6 +92,7 @@ export const controllers = async (
   brandingController: IBrandingController;
   checkLicense: () => Promise<boolean>;
   productController: ProductController;
+  routingController: RoutingController;
   close: () => Promise<void>;
 }> => {
   opts = defaultOpts(opts);
@@ -107,6 +109,12 @@ export const controllers = async (
   const settingsStore = db.store('portal:settings');
   const productStore = db.store('product:config');
   const tracesStore = db.store('saml:tracer', opts.ssoTraces?.ttl);
+  const routingController = new RoutingController(
+    db.store('sso:routing'),
+    connectionStore,
+    db.store('samlfed:apps'),
+    opts as JacksonOptionWithRequiredLogger
+  );
 
   const ssoTraces = new SSOTraces({ tracesStore, opts });
   const eventController = new EventController({ opts: opts as JacksonOptionWithRequiredLogger });
@@ -119,6 +127,7 @@ export const controllers = async (
     connectionStore,
     opts,
     eventController,
+    routingController,
   });
   const adminController = new AdminController({ connectionStore, ssoTraces });
   const setupLinkController = new SetupLinkController({ setupLinkStore, opts });
@@ -131,6 +140,7 @@ export const controllers = async (
     db,
     opts: opts as JacksonOptionWithRequiredLogger,
     ssoTraces,
+    routingController,
   });
   const brandingController = new BrandingController({ store: settingsStore, opts });
 
@@ -142,6 +152,7 @@ export const controllers = async (
     ssoTraces,
     opts,
     idFedApp: identityFederationController.app,
+    routingController,
   });
 
   const logoutController = new LogoutController({ connectionStore, sessionStore, opts });
@@ -207,6 +218,7 @@ export const controllers = async (
       return checkLicense(opts.polisLicenseKey);
     },
     productController,
+    routingController,
     close: async () => {
       await db.close();
     },
@@ -217,6 +229,7 @@ export default controllers;
 
 export * from './typings';
 export * from './ee/identity-federation/types';
+export type { PublishedRoute } from './controller/routing';
 export type SAMLJackson = Awaited<ReturnType<typeof controllers>>;
 export type ISetupLinkController = InstanceType<typeof SetupLinkController>;
 export type IBrandingController = InstanceType<typeof BrandingController>;

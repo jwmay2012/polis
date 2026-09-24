@@ -8,7 +8,7 @@ import {
   Records,
   RequiredLogger,
   SortOrder,
-  Storable,
+  ConditionalStore,
 } from '../typings';
 import * as encrypter from './encrypter';
 import mem from './mem';
@@ -18,6 +18,7 @@ import sql from './sql/sql';
 import store from './store';
 import dynamodb from './dynamoDb';
 import * as metrics from '../opentelemetry/metrics';
+import { JacksonError } from '../controller/error';
 
 import { JacksonStore } from './sql/entity/JacksonStore';
 import { JacksonIndex } from './sql/entity/JacksonIndex';
@@ -128,6 +129,33 @@ class DB implements DatabaseDriver {
     return await this.db.delete(namespace, key);
   }
 
+  async getVersioned(namespace: string, key: string) {
+    const version = await this.db.get(namespace, key);
+    return version ? { value: decrypt(version, this.encryptionKey), version } : null;
+  }
+
+  async putIfMatch(
+    namespace: string,
+    key: string,
+    val: unknown,
+    expected: Encrypted | null,
+    ttl = 0,
+    ...indexes: Index[]
+  ) {
+    if (!this.db.putIfMatch)
+      throw new JacksonError('This database driver does not support conditional writes.', 501);
+    const encrypted = this.encryptionKey
+      ? encrypter.encrypt(JSON.stringify(val), this.encryptionKey)
+      : { value: JSON.stringify(val) };
+    return this.db.putIfMatch(namespace, key, encrypted, expected, ttl, ...indexes);
+  }
+
+  async deleteIfMatch(namespace: string, key: string, expected: Encrypted) {
+    if (!this.db.deleteIfMatch)
+      throw new JacksonError('This database driver does not support conditional writes.', 501);
+    return this.db.deleteIfMatch(namespace, key, expected);
+  }
+
   async deleteMany(namespace: string, keys: string[]): Promise<void> {
     return await this.db.deleteMany(namespace, keys);
   }
@@ -144,7 +172,7 @@ class DB implements DatabaseDriver {
     return this.db.getStats();
   }
 
-  store(namespace: string, ttl = 0): Storable {
+  store(namespace: string, ttl = 0): ConditionalStore {
     return store.new(namespace, this, ttl);
   }
 

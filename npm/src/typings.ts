@@ -351,6 +351,15 @@ export interface DatabaseDriver {
   ): Promise<Records>;
   get(namespace: string, key: string): Promise<any>;
   put(namespace: string, key: string, val: any, ttl: number, ...indexes: Index[]): Promise<any>;
+  putIfMatch?(
+    namespace: string,
+    key: string,
+    val: Encrypted,
+    expected: Encrypted | null,
+    ttl: number,
+    ...indexes: Index[]
+  ): Promise<boolean>;
+  deleteIfMatch?(namespace: string, key: string, expected: Encrypted): Promise<boolean>;
   delete(namespace: string, key: string): Promise<any>;
   getByIndex(
     namespace: string,
@@ -389,6 +398,12 @@ export interface Storable {
 
 export interface DatabaseStore {
   store(namespace: string): Storable;
+}
+
+export interface ConditionalStore extends Storable {
+  getVersioned<T = any>(key: string): Promise<{ value: T; version: Encrypted } | null>;
+  putIfMatch(key: string, val: unknown, expected: Encrypted | null, ...indexes: Index[]): Promise<boolean>;
+  deleteIfMatch(key: string, expected: Encrypted): Promise<boolean>;
 }
 
 export interface Encrypted {
