@@ -68,6 +68,10 @@ test.beforeEach(async ({ page, baseURL }) => {
 });
 
 test('admin inventory requires an admin session, not an API key', async ({ request }) => {
+  const defaults = await request.get('/api/admin/connections/defaults', {
+    headers: { Authorization: 'Api-Key local-inventory-api-key' },
+  });
+  expect(defaults.status()).toBe(401);
   for (const endpoint of ['connections', 'identity-federation']) {
     const response = await request.get(`/api/admin/${endpoint}?inventory=true&product=example`, {
       headers: { Authorization: 'Api-Key local-inventory-api-key' },

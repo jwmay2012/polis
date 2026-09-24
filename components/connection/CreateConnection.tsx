@@ -1,10 +1,12 @@
 import { useRouter } from 'next/router';
+import useSWR from 'swr';
 import { errorToast } from '@components/Toaster';
 import { useTranslation } from 'next-i18next';
-import { LinkBack } from '@boxyhq/internal-ui';
+import { LinkBack, Loading } from '@boxyhq/internal-ui';
 import { CreateSSOConnection } from '@boxyhq/react-ui/sso';
 import { BOXYHQ_UI_CSS } from '@components/styles';
 import { AdminPortalSSODefaults } from '@lib/utils';
+import { fetcher } from '@lib/ui/utils';
 
 const CreateConnection = ({
   isSettingsView = false,
@@ -16,12 +18,22 @@ const CreateConnection = ({
 }) => {
   const { t } = useTranslation('common');
   const router = useRouter();
+  const {
+    data: defaults,
+    error,
+    isLoading,
+  } = useSWR<{ product?: string }>(isSettingsView ? null : '/api/admin/connections/defaults', fetcher, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  });
 
   const redirectUrl = isSettingsView ? '/admin/settings/sso-connection' : '/admin/sso-connection';
 
   const backUrl = redirectUrl;
 
   const fieldsToExclude: any = isSettingsView ? ['label', 'tenant', 'product'] : ['label'];
+
+  if (isLoading) return <Loading />;
 
   return (
     <>
@@ -30,8 +42,9 @@ const CreateConnection = ({
         {t('create_sso_connection')}
       </h2>
       <div className='min-w-[28rem] rounded border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800'>
+        {error && <p className='mb-3 text-sm text-amber-700'>{t('connection_default_unavailable')}</p>}
         <CreateSSOConnection
-          defaults={isSettingsView ? adminPortalSSODefaults : undefined}
+          defaults={isSettingsView ? adminPortalSSODefaults : defaults}
           variant={{ saml: 'advanced', oidc: 'advanced' }}
           urls={{
             post: '/api/admin/connections',

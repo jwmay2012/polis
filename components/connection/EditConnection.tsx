@@ -7,6 +7,7 @@ import { EditSAMLConnection, EditOIDCConnection } from '@boxyhq/react-ui/sso';
 import { BOXYHQ_UI_CSS } from '@components/styles';
 import PublicClientSettings from './PublicClientSettings';
 import Applications from './Applications';
+import LoginRouting from './LoginRouting';
 
 type EditProps = {
   connection: SAMLSSORecord | OIDCSSORecord;
@@ -47,6 +48,14 @@ const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: 
         </div>
         {!setupLinkToken && !isSettingsView && (
           <Applications key={connection.clientID} tenant={connection.tenant} product={connection.product} />
+        )}
+        {!setupLinkToken && !isSettingsView && (
+          <LoginRouting
+            key={connection.clientID}
+            connectionID={connection.clientID}
+            tenant={connection.tenant}
+            product={connection.product}
+          />
         )}
         <div className='min-w-[28rem] rounded border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800'>
           {connectionIsSAML && (
