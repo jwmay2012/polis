@@ -68,6 +68,10 @@ test.beforeEach(async ({ page, baseURL }) => {
 });
 
 test('admin inventory requires an admin session, not an API key', async ({ request }) => {
+  const defaults = await request.get('/api/admin/connections/defaults', {
+    headers: { Authorization: 'Api-Key local-inventory-api-key' },
+  });
+  expect(defaults.status()).toBe(401);
   for (const endpoint of ['connections', 'identity-federation']) {
     const response = await request.get(`/api/admin/${endpoint}?inventory=true&product=example`, {
       headers: { Authorization: 'Api-Key local-inventory-api-key' },
@@ -387,12 +391,7 @@ test('normal admin creation opens the connection editor and its Applications pan
   await page.getByLabel('Connection name (Optional)', { exact: true }).fill('New customer connection');
   await page.getByLabel('Tenant', { exact: true }).fill('new-customer.example.test');
   await page.getByLabel('Product', { exact: true }).fill(scope);
-  await page
-    .getByRole('group')
-    .filter({ hasText: 'Allowed redirect URLs' })
-    .getByRole('textbox')
-    .first()
-    .fill(baseURL!);
+  await page.getByLabel('Allowed redirect URL 1', { exact: true }).fill(baseURL!);
   await page.getByLabel('Default redirect URL', { exact: true }).fill(`${baseURL}/callback`);
   await page
     .getByLabel('Raw IdP XML', { exact: true })

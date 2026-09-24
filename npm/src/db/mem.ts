@@ -198,6 +198,42 @@ class Mem implements DatabaseDriver {
     delete this.ttlStore[k];
   }
 
+  async putIfMatch(
+    namespace: string,
+    key: string,
+    val: Encrypted,
+    expected: Encrypted | null,
+    ttl = 0,
+    ...indexes: Index[]
+  ) {
+    const current = this.store[dbutils.key(namespace, key)];
+    if (
+      expected === null
+        ? current !== undefined
+        : !current ||
+          current.value !== expected.value ||
+          (current.iv ?? null) !== (expected.iv ?? null) ||
+          (current.tag ?? null) !== (expected.tag ?? null)
+    )
+      return false;
+    // put/delete mutate synchronously, before yielding to another request.
+    await this.put(namespace, key, val, ttl, ...indexes);
+    return true;
+  }
+
+  async deleteIfMatch(namespace: string, key: string, expected: Encrypted) {
+    const current = this.store[dbutils.key(namespace, key)];
+    if (
+      !current ||
+      current.value !== expected.value ||
+      (current.iv ?? null) !== (expected.iv ?? null) ||
+      (current.tag ?? null) !== (expected.tag ?? null)
+    )
+      return false;
+    await this.delete(namespace, key);
+    return true;
+  }
+
   async deleteMany(namespace: string, keys: string[]): Promise<void> {
     if (keys.length === 0) {
       return;

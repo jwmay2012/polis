@@ -42,7 +42,8 @@ export class SSOPage {
     this.redirectURLSInput = page
       .getByRole('group')
       .filter({ hasText: 'Allowed redirect URLs' })
-      .locator(page.getByRole('textbox').first());
+      .locator('input')
+      .first();
     this.defaultRedirectURLInput = this.page.getByLabel('Default redirect URL');
     this.metadataUrlInput = this.page.getByLabel('Metadata URL');
     this.oidcDiscoveryUrlInput = this.page.getByLabel('Well-known URL of OpenID Provider');
