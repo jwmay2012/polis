@@ -7,6 +7,7 @@ import LockClosedIcon from '@heroicons/react/24/outline/LockClosedIcon';
 import ExclamationTriangleIcon from '@heroicons/react/24/outline/ExclamationTriangleIcon';
 import { addQueryParamsToPath } from '../utils';
 import { fetchInventory, type Inventory } from './inventory';
+import { ScopeLabel } from '../shared/ScopeLabel';
 
 type Connection = { id: string; name?: string; tenant: string; product: string; active: boolean };
 
@@ -65,7 +66,9 @@ export const TenantPicker = ({
 
   return (
     <fieldset className='form-control w-full tenant-picker'>
-      <legend className='label'>{t('bui-fs-tenants')}</legend>
+      <legend className='label'>
+        <ScopeLabel field='tenants' context='application' />
+      </legend>
       <TagsInput
         value={selected}
         onChange={change}

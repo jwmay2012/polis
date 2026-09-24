@@ -33,6 +33,7 @@ import {
   computeKid,
   isJWSKeyPairLoaded,
   extractOIDCUserProfile,
+  extractRedirectUrls,
   getScopeValues,
   getEncodedTenantProduct,
   isConnectionActive,
@@ -47,6 +48,7 @@ import * as codeVerifier from './oauth/code-verifier';
 import * as redirect from './oauth/redirect';
 import { getDefaultCertificate } from '../saml/x509';
 import { SSOHandler } from './sso-handler';
+import type { RoutingController } from './routing';
 import { ValidateOption, extractSAMLResponseAttributes } from '../saml/lib';
 import { oidcClientConfig } from './oauth/oidc-client';
 import { App } from '../ee/identity-federation/app';
@@ -92,7 +94,16 @@ export class OAuthController implements IOAuthController {
   private ssoHandler: SSOHandler;
   private idFedApp: App;
 
-  constructor({ connectionStore, sessionStore, codeStore, tokenStore, ssoTraces, opts, idFedApp }) {
+  constructor({
+    connectionStore,
+    sessionStore,
+    codeStore,
+    tokenStore,
+    ssoTraces,
+    opts,
+    idFedApp,
+    routingController = undefined as RoutingController | undefined,
+  }) {
     this.connectionStore = connectionStore;
     this.sessionStore = sessionStore;
     this.codeStore = codeStore;
@@ -101,7 +112,12 @@ export class OAuthController implements IOAuthController {
     this.opts = { ...opts, logger: contextualLogger(opts.logger) };
     this.idFedApp = idFedApp;
 
-    this.ssoHandler = new SSOHandler({ connection: connectionStore, session: sessionStore, opts: this.opts });
+    this.ssoHandler = new SSOHandler({
+      connection: connectionStore,
+      session: sessionStore,
+      opts: this.opts,
+      routingController,
+    });
   }
 
   @logContext.logOperation
@@ -919,6 +935,10 @@ export class OAuthController implements IOAuthController {
         throw new JacksonError(GENERIC_ERR_STRING, 403, 'SAML connection not found.');
       }
       logContext.bindConnection(connection);
+
+      if (isIdPFlow && extractRedirectUrls(connection.redirectUrl).length === 0) {
+        throw new JacksonError('Direct application integration is disabled for this connection.', 403);
+      }
 
       if (
         session &&

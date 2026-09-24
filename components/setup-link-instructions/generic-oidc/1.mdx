@@ -1,5 +1,10 @@
 ## Step 1: Create Application
 
+Register the callback below with your identity provider for this server-side application.
+It receives the identity provider's OIDC response. It is not an application-return
+URL for Kratos or a mobile app, and does not change when connection-level direct
+integration is disabled.
+
 <div className='flex flex-col gap-4'>
   <div>
     <InputWithCopyButton text={oidcCallbackUrl} label='Callback URL' />

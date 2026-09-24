@@ -10,6 +10,7 @@ import type {
   OIDCSSORecord,
 } from '../../src/typings';
 import { jacksonOptions } from '../utils';
+import type { RoutingController } from '../../src/controller/routing';
 
 // Strict domain routing: absent an explicit IdP selection, an authorization
 // request must carry an email login_hint, and its domain must select exactly
@@ -43,6 +44,7 @@ let singleApp: IdentityFederationApp;
 let connectionA: OIDCSSORecord;
 let connectionB: OIDCSSORecord;
 let inactive: OIDCSSORecord;
+let routing: RoutingController;
 
 const createConnection = (tenant: string, host: string, connectionProduct = product) =>
   connectionAPIController.createOIDCConnection({
@@ -62,6 +64,7 @@ tap.before(async () => {
   oauthController = jackson.oauthController;
   connectionAPIController = jackson.connectionAPIController;
   identityFederationController = jackson.identityFederationController;
+  routing = jackson.routingController;
 
   // The parameter type lists the SAML fields as required even for an OIDC app.
   app = await identityFederationController.app.create({
@@ -204,3 +207,77 @@ tap.test('Strict domain routing', async (t) => {
     });
   });
 });
+
+tap.test(
+  'Published routing is shared with discovery and does not fall through to legacy candidates',
+  async (t) => {
+    await routing.setManaged(app.id, true, null);
+    for (const loginHint of ['not-an-address', 'person@under_score.example', `${'a'.repeat(250)}@a.example`])
+      await t.rejects(authorize(loginHint), {
+        statusCode: 400,
+        message: 'Invalid email format',
+        internalError: 'invalid_login_hint',
+      });
+    await routing.publish({
+      app: app.id,
+      match: 'alias.example',
+      connectionID: connectionA.clientID,
+      expectedRevision: null,
+    });
+    await routing.publish({
+      app: app.id,
+      match: `pilot@${tenantA}`,
+      connectionID: connectionB.clientID,
+      expectedRevision: null,
+    });
+    await createConnection(tenantA, 'unpublished-replacement.example');
+    t.equal(await routedTo('person@alias.example'), 'https://idp-a.example');
+    t.equal(await routedTo(`pilot@${tenantA}`), 'https://idp-b.example');
+    t.match(await routing.lookup(app.id, `pilot@${tenantA}`), {
+      status: 'route',
+      connection: { clientID: connectionB.clientID },
+    });
+    t.match(
+      await rejection(`other@${tenantA}`),
+      { statusCode: 404 },
+      'tenant is not an implicit published domain'
+    );
+    process.env.STRICT_DOMAIN_ROUTING = 'false';
+    try {
+      t.match(
+        await rejection('person@unknown.example'),
+        { statusCode: 404 },
+        'managed no-match cannot reveal a legacy picker'
+      );
+    } finally {
+      process.env.STRICT_DOMAIN_ROUTING = 'true';
+    }
+    await connectionAPIController.updateOIDCConnection({
+      clientID: connectionB.clientID,
+      clientSecret: connectionB.clientSecret,
+      tenant: tenantB,
+      product,
+      deactivated: true,
+    });
+    t.match(
+      await rejection(`pilot@${tenantA}`),
+      { statusCode: 403 },
+      'published but disabled does not fall through'
+    );
+    await t.rejects(
+      connectionAPIController.deleteConnections({
+        clientID: connectionA.clientID,
+        clientSecret: connectionA.clientSecret,
+      }),
+      { message: /published SSO routes/, statusCode: 409 }
+    );
+    await t.rejects(connectionAPIController.deleteConnections({ tenant: tenantA, product }), {
+      message: /published SSO routes/,
+      statusCode: 409,
+    });
+    await t.rejects(identityFederationController.app.delete({ id: app.id }), {
+      message: /published SSO routes/,
+      statusCode: 409,
+    });
+  }
+);

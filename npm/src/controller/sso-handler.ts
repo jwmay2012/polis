@@ -23,6 +23,7 @@ import * as allowed from './oauth/allowed';
 import { oidcClientConfig } from './oauth/oidc-client';
 import { extractDomainFromLoginHint, filterConnectionsByDomain } from './domain-utils';
 import * as logContext from './log-context';
+import { normalizeLoginMatch, type RoutingController } from './routing';
 
 const deflateRawAsync = promisify(deflateRaw);
 
@@ -30,19 +31,23 @@ export class SSOHandler {
   private connection: Storable;
   private session: Storable;
   private opts: JacksonOptionWithRequiredLogger;
+  private routingController?: RoutingController;
 
   constructor({
     connection,
     session,
     opts,
+    routingController,
   }: {
     connection: Storable;
     session: Storable;
     opts: JacksonOptionWithRequiredLogger;
+    routingController?: RoutingController;
   }) {
     this.connection = connection;
     this.session = session;
     this.opts = opts;
+    this.routingController = routingController;
   }
 
   // If there are multiple connections for the given tenant and product, return the url to the IdP selection page
@@ -114,6 +119,31 @@ export class SSOHandler {
       }
 
       return { connection };
+    }
+
+    if (authFlow === 'oauth' && idFedAppId && this.routingController) {
+      const managed = await this.routingController.managed(idFedAppId);
+      if (managed && !login_hint)
+        throw new JacksonError('Authentication requires email address', 400, 'missing_login_hint');
+      if (managed && !extractDomainFromLoginHint(login_hint))
+        throw new JacksonError('Invalid email format', 400, 'invalid_login_hint');
+      if (login_hint && extractDomainFromLoginHint(login_hint)) {
+        try {
+          normalizeLoginMatch(login_hint);
+        } catch {
+          throw new JacksonError('Invalid email format', 400, 'invalid_login_hint');
+        }
+        const selected = await this.routingController.lookup(idFedAppId, login_hint);
+        if (selected.status === 'route') {
+          if (!this.isConnectionInScope(selected.connection, { tenant, product, tenants, entityId }))
+            throw new JacksonError(GENERIC_ERR_STRING, 403, noSSOConnectionErrMessage);
+          return { connection: selected.connection };
+        }
+        if (selected.status === 'unavailable')
+          throw new JacksonError('Single sign-on is unavailable for this account.', 403, selected.reason);
+        if (selected.status === 'none')
+          throw new JacksonError('No SSO configuration found', 404, 'domain_not_configured');
+      }
     }
 
     // Find SAML connections for the app

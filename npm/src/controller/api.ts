@@ -24,16 +24,24 @@ import { JacksonError } from './error';
 import { IndexNames, appID, transformConnections, transformConnection, isConnectionActive } from './utils';
 import oidcConnection from './connection/oidc';
 import samlConnection from './connection/saml';
+import type { RoutingController } from './routing';
 
 export class ConnectionAPIController implements IConnectionAPIController {
   private connectionStore: Storable;
   private opts: JacksonOption;
   private eventController: IEventController;
+  private routingController?: RoutingController;
 
-  constructor({ connectionStore, opts, eventController }) {
+  constructor({
+    connectionStore,
+    opts,
+    eventController,
+    routingController = undefined as RoutingController | undefined,
+  }) {
     this.connectionStore = connectionStore;
     this.opts = opts;
     this.eventController = eventController;
+    this.routingController = routingController;
   }
 
   /**
@@ -730,7 +738,9 @@ export class ConnectionAPIController implements IConnectionAPIController {
       }
 
       if (connection.clientSecret === clientSecret) {
+        await this.routingController?.assertUnused({ connectionID: clientID });
         await this.connectionStore.delete(clientID);
+        await this.routingController?.removeDraft(clientID);
         await this.eventController.notify('sso.deleted', transformConnection(connection));
       } else {
         throw new JacksonError('clientSecret mismatch', 400);
@@ -740,12 +750,14 @@ export class ConnectionAPIController implements IConnectionAPIController {
     }
 
     if (tenant && product) {
-      const connections = (
-        await this.connectionStore.getByIndex({
-          name: IndexNames.TenantProduct,
-          value: dbutils.keyFromParts(tenant, product),
-        })
-      ).data;
+      const connections = this.routingController
+        ? await this.routingController.connectionsForTenant(tenant, product)
+        : (
+            await this.connectionStore.getByIndex({
+              name: IndexNames.TenantProduct,
+              value: dbutils.keyFromParts(tenant, product),
+            })
+          ).data;
 
       if (!connections || !connections.length) {
         return;
@@ -768,8 +780,11 @@ export class ConnectionAPIController implements IConnectionAPIController {
           })
         : connections;
 
+      for (const conf of filteredConnections)
+        await this.routingController?.assertUnused({ connectionID: conf.clientID });
       for (const conf of transformConnections(filteredConnections)) {
         await this.connectionStore.delete(conf.clientID);
+        await this.routingController?.removeDraft(conf.clientID);
         await this.eventController.notify('sso.deleted', conf);
       }
 

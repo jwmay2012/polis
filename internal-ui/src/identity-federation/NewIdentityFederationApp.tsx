@@ -6,7 +6,7 @@ import type { IdentityFederationApp } from '../types';
 import QuestionMarkCircleIcon from '@heroicons/react/24/outline/QuestionMarkCircleIcon';
 import { defaultHeaders } from '../utils';
 import { AttributesMapping } from './AttributesMapping';
-import { PageHeader } from '../shared';
+import { PageHeader, ScopeLabel } from '../shared';
 import { ItemList } from '@boxyhq/react-ui/shared';
 import { TenantPicker } from './TenantPicker';
 
@@ -141,11 +141,12 @@ export const NewIdentityFederationApp = ({
               required
             />
           </label>
-          <label className='form-control w-full'>
+          <div className='form-control w-full'>
             <div className='label'>
-              <span className='label-text'>{t('bui-shared-tenant')}</span>
+              <ScopeLabel field='tenant' context='application' htmlFor='app-tenant' />
             </div>
             <input
+              id='app-tenant'
               type='text'
               placeholder='example.com'
               className='input input-bordered w-full text-sm'
@@ -154,13 +155,14 @@ export const NewIdentityFederationApp = ({
               onChange={formik.handleChange}
               required
             />
-          </label>
+          </div>
           {!excludeFields?.includes('product') && (
-            <label className='form-control w-full'>
+            <div className='form-control w-full'>
               <div className='label'>
-                <span className='label-text'>{t('bui-shared-product')}</span>
+                <ScopeLabel field='product' context='application' htmlFor='app-product' />
               </div>
               <input
+                id='app-product'
                 type='text'
                 placeholder='MyApp'
                 className='input input-bordered w-full text-sm'
@@ -173,7 +175,7 @@ export const NewIdentityFederationApp = ({
                 }}
                 required
               />
-            </label>
+            </div>
           )}
           {connectionIsSAML && (
             <label className='form-control w-full'>

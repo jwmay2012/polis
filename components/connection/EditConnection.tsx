@@ -1,12 +1,15 @@
 import { useRouter } from 'next/router';
+import { useState } from 'react';
 import { errorToast, successToast } from '@components/Toaster';
 import { useTranslation } from 'next-i18next';
-import { LinkBack } from '@boxyhq/internal-ui';
+import { LinkBack, ScopeFields } from '@boxyhq/internal-ui';
 import type { OIDCSSORecord, SAMLSSORecord } from '@boxyhq/saml-jackson';
 import { EditSAMLConnection, EditOIDCConnection } from '@boxyhq/react-ui/sso';
 import { BOXYHQ_UI_CSS } from '@components/styles';
 import PublicClientSettings from './PublicClientSettings';
 import Applications from './Applications';
+import LoginRouting from './LoginRouting';
+import DirectIntegrationSettings from './DirectIntegrationSettings';
 
 type EditProps = {
   connection: SAMLSSORecord | OIDCSSORecord;
@@ -17,6 +20,8 @@ type EditProps = {
 const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: EditProps) => {
   const router = useRouter();
   const { t } = useTranslation('common');
+  const [connectionDirty, setConnectionDirty] = useState(false);
+  const [directRevision, setDirectRevision] = useState(0);
 
   const { id: connectionClientId } = router.query;
 
@@ -32,9 +37,11 @@ const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: 
   const apiUrl = setupLinkToken ? `/api/setup/${setupLinkToken}/sso-connection` : `/api/admin/connections`;
   const connectionFetchUrl = setupLinkToken
     ? `/api/setup/${setupLinkToken}/sso-connection/${connectionClientId}`
-    : `/api/admin/connections/${connectionClientId}`;
+    : `/api/admin/connections/${connectionClientId}?activity=${connection.deactivated ? 'inactive' : 'active'}&direct=${directRevision}`;
 
-  const fieldsToExclude: any = isSettingsView ? ['label', 'tenant', 'product'] : ['label'];
+  const fieldsToExclude: any = isSettingsView
+    ? ['label', 'tenant', 'product']
+    : ['label', 'tenant', 'product', 'redirectUrl', 'defaultRedirectUrl'];
 
   return (
     <>
@@ -48,12 +55,27 @@ const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: 
         {!setupLinkToken && !isSettingsView && (
           <Applications key={connection.clientID} tenant={connection.tenant} product={connection.product} />
         )}
-        <div className='min-w-[28rem] rounded border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800'>
+        {!setupLinkToken && !isSettingsView && (
+          <LoginRouting
+            key={connection.clientID}
+            connectionID={connection.clientID}
+            tenant={connection.tenant}
+            product={connection.product}
+            connectionDirty={connectionDirty}
+          />
+        )}
+        <div
+          className='min-w-[28rem] rounded border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800'
+          onChangeCapture={() => setConnectionDirty(true)}>
+          {!setupLinkToken && !isSettingsView && (
+            <ScopeFields tenant={connection.tenant} product={connection.product} />
+          )}
           {connectionIsSAML && (
             <EditSAMLConnection
+              key={`saml-${directRevision}`}
               displayHeader={false}
               displayIdpMetadata={true}
-              displayInfo={setupLinkToken ? false : true}
+              displayInfo={!setupLinkToken && isSettingsView}
               excludeFields={
                 setupLinkToken
                   ? [
@@ -96,8 +118,9 @@ const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: 
           )}
           {connectionIsOIDC && (
             <EditOIDCConnection
+              key={`oidc-${directRevision}`}
               displayHeader={false}
-              displayInfo={setupLinkToken ? false : true}
+              displayInfo={!setupLinkToken && isSettingsView}
               variant='advanced'
               excludeFields={
                 setupLinkToken
@@ -140,6 +163,13 @@ const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: 
             />
           )}
         </div>
+        {!setupLinkToken && !isSettingsView && (
+          <DirectIntegrationSettings
+            connection={connection}
+            dirty={connectionDirty}
+            onSaved={() => setDirectRevision((revision) => revision + 1)}
+          />
+        )}
         {/* Public Client Settings for OIDC connections */}
         {connectionIsOIDC && !setupLinkToken && (
           <PublicClientSettings

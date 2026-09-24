@@ -12,6 +12,7 @@ export const NewSetupLink = ({
   onCreate,
   onError,
   excludeFields,
+  productSuggestions,
 }: {
   urls: { createLink: string };
   service: SetupLinkService;
@@ -19,6 +20,7 @@ export const NewSetupLink = ({
   onCreate: (data: SetupLink) => void;
   onError: (error: Error) => void;
   excludeFields?: 'product'[];
+  productSuggestions?: { product?: string; products?: string[] };
 }) => {
   const { t } = useTranslation('common');
 
@@ -33,6 +35,7 @@ export const NewSetupLink = ({
             onCreate={onCreate}
             onError={onError}
             excludeFields={excludeFields}
+            productSuggestions={productSuggestions}
           />
         </>
       ) : (

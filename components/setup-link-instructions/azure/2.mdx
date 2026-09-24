@@ -10,6 +10,9 @@ Click **Edit** on the **Basic SAML Configuration** section.
 
 Enter the following values in the **Basic SAML Configuration** section on the next screen:
 
+Use this SAML Reply URL, not a Kratos/mobile application-return URL. These settings
+are supplied by the service and are independent of connection-level direct integration.
+
 <div className='flex flex-col gap-4'>
   <div>
     <InputWithCopyButton text={spConfig.acsUrl} label='Reply URL (Assertion Consumer Service URL)' />
