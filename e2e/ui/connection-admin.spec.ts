@@ -145,14 +145,28 @@ test('Edit shows complete tenant inventory, preserves unknown keys and scrolls l
   const picker = page.locator('.tenant-picker');
   await expect(picker.getByRole('checkbox', { name: /tenant-53\.example\.test/ })).toBeVisible();
   await expect(picker.getByRole('checkbox', { name: /north\.example\.test/ })).toHaveAccessibleName(
-    /1 active \/ 2 connections/
+    /^north\.example\.test.*Shared name.*1\/2$/
+  );
+  await expect(picker.getByRole('checkbox', { name: /north\.example\.test/ })).toHaveAccessibleDescription(
+    'Connections: active/total'
   );
   await expect(picker.getByRole('checkbox', { name: /tenant-2\.example\.test/ })).toHaveAccessibleName(
-    /0 active \/ 1 connections/
+    /^tenant-2\.example\.test.*Shared name.*0\/1$/
   );
+  await expect(picker.getByText('Connections: active/total', { exact: true })).toHaveCount(1);
   await expect(picker.getByRole('img', { name: /No connection for this product/ })).toHaveCount(2);
   await expect(picker.getByRole('button', { name: 'Remove tenant owner.example.test' })).toHaveCount(0);
   const tags = picker.locator('.react-tagsinput');
+  await expect(tags.getByText(/^\d+\/\d+$/)).toHaveCount(0);
+  await expect(tags.getByText('north.example.test', { exact: true })).toHaveClass(/font-mono/);
+  await expect(tags.locator('.react-tagsinput-tag').filter({ hasText: /^north\.example\.test/ })).toHaveText(
+    /^north\.example\.test.*Shared name/
+  );
+  await picker.getByRole('searchbox').fill('Shared name');
+  await expect(picker.getByRole('checkbox')).toHaveCount(2);
+  await picker.getByRole('searchbox').fill('tenant-53.example.test');
+  await expect(picker.getByRole('checkbox')).toHaveCount(1);
+  await picker.getByRole('searchbox').fill('');
   expect(await tags.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   await picker.getByRole('button', { name: 'Remove tenant future.example.test' }).scrollIntoViewIfNeeded();
   await expect(picker.getByRole('button', { name: 'Remove tenant future.example.test' })).toBeVisible();
@@ -167,7 +181,10 @@ test('Edit shows complete tenant inventory, preserves unknown keys and scrolls l
   expect(saved.tenants).toContain('future.example.test');
   expect(saved.tenants).toContain('NORTH.EXAMPLE.TEST');
   expect(saved.tenants[0]).toBe('owner.example.test');
-  await page.screenshot({ path: info.outputPath('tenant-picker.png'), fullPage: true });
+  await tags.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await picker.screenshot({ path: info.outputPath('tenant-picker.png') });
 });
 
 test('primary tenant survives Backspace and New derives it without retaining an old primary', async ({
@@ -235,6 +252,8 @@ test('partial/error inventories withhold missing markers and product changes rep
   await expect(picker.getByRole('checkbox', { name: /First customer/ })).toHaveCount(0);
   await expect(picker.getByRole('img', { name: /No connection for this product/ })).toHaveCount(0);
   await expect(picker.getByText('The full inventory is unavailable.', { exact: false })).toBeVisible();
+  await expect(picker.getByText(/^\d+\/\d+$/)).toHaveCount(0);
+  await expect(picker.getByText('Connections: active/total', { exact: true })).toHaveCount(0);
   await expect(picker.locator('.react-tagsinput-tag').filter({ hasText: 'future.example.test' })).toHaveCount(
     1
   );

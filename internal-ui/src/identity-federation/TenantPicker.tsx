@@ -51,12 +51,17 @@ export const TenantPicker = ({
     const names = Array.from(tenants.get(tenant)?.names || [])
       .sort()
       .join(', ');
-    return names ? `${names} (${tenant})` : tenant;
+    return (
+      <>
+        <span className='font-mono font-medium'>{tenant}</span>
+        {names && <span className='ml-2 text-xs text-gray-500'>— {names}</span>}
+      </>
+    );
   };
   const query = search.trim().toLowerCase();
   const choices = Array.from(tenants.keys())
     .sort()
-    .filter((tenant) => label(tenant).toLowerCase().includes(query));
+    .filter((tenant) => [tenant, ...tenants.get(tenant)!.names].join(' ').toLowerCase().includes(query));
 
   return (
     <fieldset className='form-control w-full tenant-picker'>
@@ -79,9 +84,6 @@ export const TenantPicker = ({
           return (
             <span key={key} className={className}>
               <span>{label(tag)}</span>
-              {complete && known && (
-                <span className='ml-1 text-xs'>{t('bui-fs-connection-count', known)}</span>
-              )}
               {primary ? (
                 <span
                   className='ml-1 inline-flex'
@@ -118,9 +120,16 @@ export const TenantPicker = ({
       {connectionsUrl && !product && <p className='mt-2 text-sm'>{t('bui-fs-product-for-tenants')}</p>}
       {url && (
         <div className='mt-3'>
-          <label htmlFor={`${id}-search`} className='label'>
-            {t('bui-fs-search-tenants')}
-          </label>
+          <div className='flex flex-wrap items-center justify-between gap-x-4'>
+            <label htmlFor={`${id}-search`} className='label'>
+              {t('bui-fs-search-tenants')}
+            </label>
+            {complete && (
+              <span id={`${id}-counts`} className='text-xs text-gray-500'>
+                {t('bui-fs-connection-count-label')}
+              </span>
+            )}
+          </div>
           <input
             id={`${id}-search`}
             type='search'
@@ -146,7 +155,8 @@ export const TenantPicker = ({
               <label key={tenant} className='flex cursor-pointer items-center gap-2 py-1 text-sm'>
                 <input
                   type='checkbox'
-                  className='checkbox checkbox-sm'
+                  className='checkbox checkbox-sm shrink-0'
+                  aria-describedby={complete ? `${id}-counts` : undefined}
                   checked={selected.includes(tenant)}
                   disabled={tenant === primaryTenant}
                   onChange={(event) =>
@@ -157,9 +167,9 @@ export const TenantPicker = ({
                     )
                   }
                 />
-                <span className='break-all'>{label(tenant)}</span>
+                <span className='min-w-0 flex-1 break-words'>{label(tenant)}</span>
                 {complete && (
-                  <span className='text-xs text-gray-500'>
+                  <span className='ml-auto shrink-0 text-xs tabular-nums text-gray-500'>
                     {t('bui-fs-connection-count', tenants.get(tenant)!)}
                   </span>
                 )}
