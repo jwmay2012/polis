@@ -452,7 +452,15 @@ tap.test(
     });
     const profile = await f.controller.userInfo(token.access_token);
     t.same(Object.keys(token).sort(), ['access_token', 'expires_in', 'token_type']);
-    t.same(Object.keys(profile).sort(), ['email', 'firstName', 'id', 'lastName', 'requested']);
+    t.same(Object.keys(profile).sort(), [
+      'email',
+      'email_verified',
+      'firstName',
+      'id',
+      'lastName',
+      'requested',
+    ]);
+    t.equal(profile.email_verified, false, 'a legacy profile has no accepted verification evidence');
     const rows = [
       'Polis authorization code issued',
       'Polis token redemption succeeded',

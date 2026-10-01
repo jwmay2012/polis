@@ -155,20 +155,21 @@ export class RoutingController {
     );
   }
 
-  async lookup(app: string, email: string): Promise<RouteLookup> {
+  async lookup(app: string, email: string, annotate = true): Promise<RouteLookup> {
     const match = normalizeLoginMatch(email);
     if (!match.includes('@')) throw new JacksonError('Enter a full email address.', 400);
     const domain = match.slice(match.lastIndexOf('@') + 1);
     const route: PublishedRoute | null =
       (await this.store.get(`route:${app}:${match}`)) || (await this.store.get(`route:${app}:${domain}`));
     if (!route) return { status: (await this.managed(app)) ? 'none' : 'legacy' };
-    bindContext({
-      requested_email: match,
-      requested_domain: domain,
-      federation_app_id: app,
-      routing_source: 'published_match',
-      connection_id: route.connectionID,
-    });
+    if (annotate)
+      bindContext({
+        requested_email: match,
+        requested_domain: domain,
+        federation_app_id: app,
+        routing_source: 'published_match',
+        connection_id: route.connectionID,
+      });
     try {
       const connection: Connection | null = await this.connections.get(route.connectionID);
       if (!connection) return { status: 'unavailable', reason: 'missing', route };

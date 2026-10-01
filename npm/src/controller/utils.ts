@@ -18,6 +18,7 @@ import type {
 import { JacksonError } from './error';
 import * as redirect from './oauth/redirect';
 import type { JWK, CryptoKey } from 'jose';
+import { emailVerification } from './email-verification';
 
 export const GENERIC_ERR_STRING = 'Something wrong happened. Please contact your administrator.';
 
@@ -310,7 +311,10 @@ export const extractOIDCUserProfile = async (
   profile.claims.raw = rawClaims;
   logContext.bindOidcProfile(idTokenClaims, userinfo, profile.claims, tokens.id_token);
 
-  return profile;
+  return {
+    ...profile,
+    emailVerification: emailVerification(profile.claims.email, [idTokenClaims, userinfo]),
+  };
 };
 
 export const getScopeValues = (scope?: string): string[] => {

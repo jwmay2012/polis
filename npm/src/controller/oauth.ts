@@ -57,6 +57,7 @@ import { Encrypted } from '../typings';
 import * as logContext from './log-context';
 import { contextualLogger } from '../logging/context';
 import { extractDomainFromLoginHint } from './domain-utils';
+import { publicProfile, verifiedEnterpriseEmail } from './email-verification';
 
 const deflateRawAsync = promisify(deflateRaw);
 
@@ -93,6 +94,7 @@ export class OAuthController implements IOAuthController {
   private opts: JacksonOptionWithRequiredLogger;
   private ssoHandler: SSOHandler;
   private idFedApp: App;
+  private routingController?: RoutingController;
 
   constructor({
     connectionStore,
@@ -111,6 +113,7 @@ export class OAuthController implements IOAuthController {
     this.ssoTraces = ssoTraces;
     this.opts = { ...opts, logger: contextualLogger(opts.logger) };
     this.idFedApp = idFedApp;
+    this.routingController = routingController;
 
     this.ssoHandler = new SSOHandler({
       connection: connectionStore,
@@ -1404,6 +1407,24 @@ export class OAuthController implements IOAuthController {
       telemetry: logContext.continuation(),
     };
 
+    try {
+      codeVal['emailVerified'] = await verifiedEnterpriseEmail(
+        profile.emailVerification,
+        connection.clientID,
+        session?.oidcFederated?.id,
+        this.routingController
+      );
+    } catch (err) {
+      codeVal['emailVerified'] = false;
+      this.opts.logger.warn('Could not establish email verification; continuing without verified email', err);
+    }
+    logContext.bindContext({
+      email_verified: codeVal['emailVerified'],
+      email_verified_present: true,
+      email_verified_source: 'polis',
+    });
+    codeVal.telemetry = logContext.continuation();
+
     if (session) {
       codeVal['session'] = session;
     }
@@ -1690,10 +1711,16 @@ export class OAuthController implements IOAuthController {
       // store details against a token
       const token = crypto.randomBytes(20).toString('hex');
 
-      if (this.opts.flattenRawClaims) {
-        codeVal.profile.claims = { ...codeVal.profile.claims, ...codeVal.profile.claims.raw };
-        delete codeVal.profile.claims.raw;
-      }
+      codeVal.profile.claims = publicProfile(
+        codeVal.profile.claims,
+        codeVal.emailVerified,
+        !!this.opts.flattenRawClaims
+      );
+      logContext.bindContext({
+        email_verified: codeVal.profile.claims.email_verified,
+        email_verified_present: true,
+        email_verified_source: 'polis',
+      });
 
       const tokenVal = {
         ...codeVal.profile,
