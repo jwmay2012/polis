@@ -120,6 +120,16 @@ rebase/release branch. Published tags are never moved.
     bytes without changing the schema; unsupported engines refuse these operations.
     Failed comparisons leave indexes/TTL unchanged. Ordinary storage retains its
     existing contract, and routing revisions do not depend on encryption or clocks.
+12. **Provide a static, illustrated enterprise SSO administration guide.**
+    Generic MDX and synthetic screenshots explain setup, pilot publication, domain
+    moves and recovery without changing configuration. Sidebar/Dashboard links and
+    guide-scoped print styles are the only shared UI changes. Rebase seams:
+    `components/Sidebar.tsx`, `components/layouts/AccountLayout.tsx`,
+    `pages/admin/dashboard.tsx`; content lives in `components/guides/` and
+    `pages/admin/guides/`, with images in `public/guides/`.
+    Test: `npx playwright test --config playwright.guides.config.ts`.
+    Refresh screenshots: `POLIS_GUIDE_CAPTURE=1 npx playwright test --config playwright.guides.config.ts`.
+    Both use the isolated memory-backed harness; captures never use customer data.
 
 Invariants the series must keep, and the tests that hold them:
 

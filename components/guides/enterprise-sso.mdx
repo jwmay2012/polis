@@ -136,7 +136,9 @@ review publication. Confirm application-side enrollment for every domain/alias f
 <GuideFigure image="move" alt="Publication confirmation showing an existing domain owner, the retirement checkbox and the confirmation button">
 
 **1:** Review whether former connections should be disabled after their last published
-match moves. **2:** Confirm only the listed matches. Other matches stay where they are.
+match moves. This option is selected by default; clear it to leave their activity
+unchanged instead of disabling them. **2:** Confirm only the listed matches. Other
+matches stay where they are.
 
 </GuideFigure>
 
@@ -148,6 +150,10 @@ and other applications, so review the impact—not just the domain in front of y
 Enable, publish and retire are separate operations. Read every result; a partial
 failure is not full success. Re-review if another operator changed a rule. Confirm
 the published owner and test the pilot plus another intended account after the move.
+
+After the domain move, withdraw the redundant pilot exact-email rule, or deliberately
+keep it and record why. Otherwise it will still override later domain moves or rollback
+for that address. Test the pilot again after withdrawing its override.
 
 Moving rules between tenants does not rename or merge accounts. Keep a known-good
 configuration and identity-continuity plan for rollback.
@@ -165,8 +171,9 @@ Use **disable**, not withdrawal, for a temporary pause. A known-unavailable targ
 is different from no published requirement. Password enforcement and session
 revocation belong to the consuming application; publication does not delete credentials.
 
-If publishing is unavailable, check app membership, Product, the app's routing mode
-and unsaved provider edits. If a move partly succeeds, read the result before retrying.
+If publishing is unavailable, check app membership, Product and the app's routing mode.
+Unsaved provider edits also block enabling and publishing to a disabled target.
+If a move partly succeeds, read the result before retrying.
 If a deleted connection leaves a tenant entry, keep it while another connection
 needs it; remove unused non-primary membership deliberately.
 

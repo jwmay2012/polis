@@ -16,7 +16,7 @@ async function capture(page: Page, name: string, target: Locator, callouts: Loca
       badge.textContent = String(number);
       Object.assign(badge.style, {
         position: 'absolute',
-        top: `${rect.top + window.scrollY - 10}px`,
+        top: `${rect.top + window.scrollY - (element.tagName === 'LABEL' ? 26 : 10)}px`,
         left: `${rect.right + window.scrollX - 28}px`,
         zIndex: '1000',
         width: '24px',
@@ -143,7 +143,10 @@ test('refresh guide screenshots from synthetic local UI', async ({ page, browser
   const membership = page.getByRole('region', { name: 'Applications', exact: true });
   const routing = page.getByRole('region', { name: 'Login routing', exact: true });
   await routing.getByLabel('Domains or exact email addresses').fill('pilot@example.test');
-  await capture(page, 'application-membership', membership, [membership.getByRole('checkbox')]);
+  await expect(membership.getByRole('checkbox')).toBeChecked();
+  await capture(page, 'application-membership', membership, [
+    membership.locator('label').filter({ has: page.getByRole('checkbox') }),
+  ]);
   await capture(page, 'pilot-routing', routing, [
     routing.getByLabel('Domains or exact email addresses'),
     routing.getByRole('button', { name: 'Review and publish', exact: true }),
@@ -155,8 +158,9 @@ test('refresh guide screenshots from synthetic local UI', async ({ page, browser
   await routing.getByRole('button', { name: 'Review and publish', exact: true }).click();
   const confirmation = routing.getByRole('dialog');
   await expect(confirmation).toContainText('Example Company — existing');
+  await expect(confirmation.getByRole('checkbox')).toBeChecked();
   await capture(page, 'move-confirmation', confirmation, [
-    confirmation.getByRole('checkbox'),
+    confirmation.locator('label').filter({ has: page.getByRole('checkbox') }),
     confirmation.getByRole('button', { name: 'Require SSO for these matches', exact: true }),
   ]);
 });
