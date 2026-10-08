@@ -1,4 +1,5 @@
 import HomeIcon from '@heroicons/react/24/outline/HomeIcon';
+import BookOpenIcon from '@heroicons/react/24/outline/BookOpenIcon';
 import Image from 'next/image';
 import Link from 'next/link';
 import classNames from 'classnames';
@@ -119,6 +120,12 @@ export const Sidebar = ({
         },
       ],
     },
+    {
+      href: '/admin/guides',
+      text: t('guides'),
+      icon: BookOpenIcon,
+      active: asPath.startsWith('/admin/guides'),
+    },
   ];
 
   menus = menus.filter(
@@ -131,6 +138,7 @@ export const Sidebar = ({
     <>
       {/* Sidebar for mobile */}
       <div
+        data-admin-chrome
         className={classNames('relative z-40 md:hidden', { hidden: isOpen })}
         role='dialog'
         aria-modal='true'>
@@ -169,7 +177,7 @@ export const Sidebar = ({
       </div>
 
       {/* Sidebar for desktop */}
-      <div className='hidden md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col'>
+      <div data-admin-chrome className='hidden md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col'>
         <div className='flex flex-grow flex-col overflow-y-auto border-r border-gray-200 bg-white pt-5'>
           <div className='flex flex-shrink-0 items-center px-4'>
             <BrandingLink t={t} branding={branding}></BrandingLink>

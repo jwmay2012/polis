@@ -50,8 +50,8 @@ export const AccountLayout = ({ children }: { children: React.ReactNode }) => {
         hideIdentityFederation={hideIdentityFederation}
         hideDirectorySync={hideDirectorySync}
       />
-      <div className='flex flex-1 flex-col md:pl-64'>
-        <div className='sticky top-0 z-10 flex h-16 flex-shrink-0 border-b bg-white'>
+      <div data-admin-content className='flex flex-1 flex-col md:pl-64'>
+        <div data-admin-chrome className='sticky top-0 z-10 flex h-16 flex-shrink-0 border-b bg-white'>
           <button
             onClick={() => {
               setIsOpen(!isOpen);

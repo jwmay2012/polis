@@ -1,0 +1,30 @@
+.guide h2 {
+  scroll-margin-top: 5rem;
+}
+
+@media print {
+  :global(body):has(.guide) :global([data-admin-chrome]) {
+    display: none !important;
+  }
+
+  :global(body):has(.guide) :global([data-admin-content]) {
+    padding-left: 0 !important;
+  }
+
+  .controls {
+    display: none !important;
+  }
+
+  .guide {
+    max-width: none;
+    color: black;
+  }
+
+  .guide figure {
+    break-inside: avoid;
+  }
+
+  .guide h2 {
+    break-after: avoid;
+  }
+}
