@@ -134,7 +134,8 @@ test('SAML Federated app + inactive SSO connection', async ({
   await waitForErrorPage(page, baseURL!, jacksonOptions.jsonErrorPage);
   // Assert error text
   await expect(page.getByText(GENERIC_ERR_STRING)).toBeVisible();
-  errorMessages.push('SSO connection is deactivated.');
+  // Tenant/product selection excludes inactive candidates before choosing a connection.
+  errorMessages.push('No SSO connection found.');
   await portal.doCredentialsLogin();
   await portal.isLoggedIn();
 
@@ -207,7 +208,7 @@ test('OIDC Federated app + inactive SSO connection', async ({
   await waitForErrorPage(page, baseURL!, jacksonOptions.jsonErrorPage);
   // Assert error text
   await expect(page.getByText(GENERIC_ERR_STRING)).toBeVisible();
-  errorMessages.push('SSO connection is deactivated.');
+  errorMessages.push('No SSO connection found.');
   await portal.doCredentialsLogin();
   await portal.isLoggedIn();
 

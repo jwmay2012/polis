@@ -10,6 +10,7 @@ import PublicClientSettings from './PublicClientSettings';
 import Applications from './Applications';
 import LoginRouting from './LoginRouting';
 import DirectIntegrationSettings from './DirectIntegrationSettings';
+import ConnectionInfo from './ConnectionInfo';
 
 type EditProps = {
   connection: SAMLSSORecord | OIDCSSORecord;
@@ -66,9 +67,15 @@ const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: 
         )}
         <div
           className='min-w-[28rem] rounded border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800'
-          onChangeCapture={() => setConnectionDirty(true)}>
+          onChangeCapture={(event) => {
+            // The Active toggle has its own confirmation/save outside the provider form.
+            if ((event.target as HTMLElement).closest('form')) setConnectionDirty(true);
+          }}>
           {!setupLinkToken && !isSettingsView && (
-            <ScopeFields tenant={connection.tenant} product={connection.product} />
+            <>
+              <ScopeFields tenant={connection.tenant} product={connection.product} />
+              <ConnectionInfo connection={connection} />
+            </>
           )}
           {connectionIsSAML && (
             <EditSAMLConnection

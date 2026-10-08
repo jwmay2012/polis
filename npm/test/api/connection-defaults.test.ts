@@ -93,10 +93,15 @@ tap.test('creation suggestions are projected from complete inventories and the c
 });
 
 tap.test('product suggestions stay distinct from downstream redirect configuration', (t) => {
-  const options = connectionCreationOptions(['Acres', 'Acres', 'Another'], ['Only in apps'], 'Acres', true);
-  t.same(options.products, ['Acres', 'Another', 'Only in apps']);
+  const options = connectionCreationOptions(
+    ['Example product', 'Example product', 'Another'],
+    ['Only in apps'],
+    'Example product',
+    true
+  );
+  t.same(options.products, ['Another', 'Example product', 'Only in apps']);
   t.same(Object.keys(options).sort(), ['complete', 'product', 'products']);
-  t.equal(options.product, 'Acres');
+  t.equal(options.product, 'Example product');
   t.equal(connectionCreationOptions([], ['Single'], undefined, true).product, 'Single');
   t.equal(connectionCreationOptions([], ['Single'], undefined, false).product, undefined);
   t.end();

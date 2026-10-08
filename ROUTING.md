@@ -125,10 +125,10 @@ with the setup link's stored scope. Creating a setup link or connection does not
 publish domains or add application membership. Reused links keep their original
 settings; the UI warns on a mismatch and offers explicit, confirmed replacement.
 
-IdP-initiated SAML remains disabled in the Acres deployment. An empty direct allowlist
-also refuses a sessionless SAML response if that global flag is later enabled. A
+IdP-initiated SAML should remain disabled unless explicitly supported by the application.
+An empty direct allowlist also refuses a sessionless SAML response if that global flag is later enabled. A
 working IdP-initiated Default would require a receiving application code handler;
-neither an IdP callback nor the normal stateful Kratos callback is a generic substitute.
+neither an IdP callback nor an application's stateful OIDC callback is a generic substitute.
 
 Activation refreshes the vendor connection editor's private snapshot, including its
 Active toggle. Explicit direct-integration saves also reload the provider form so a

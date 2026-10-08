@@ -400,3 +400,21 @@ test('existing direct configuration stays unchanged until an explicit save, and 
   await expect(page).toHaveURL(/\/admin\/sso-connection(?:\?|$)/);
   expect((await get()).redirectUrl).toEqual([]);
 });
+
+test('cancelling the independent Active toggle does not mark provider settings dirty', async ({
+  page,
+  baseURL,
+}) => {
+  const { old } = await setup(page.request, baseURL!);
+  await page.goto(`/admin/sso-connection/edit/${old.clientID}`);
+  await page
+    .locator('label')
+    .filter({ hasText: /^Active$/ })
+    .click();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: 'Active', exact: true })).toBeChecked();
+  await page.getByText('Advanced: Direct application integration', { exact: true }).click();
+  await page.getByLabel('Enable direct application integration', { exact: true }).uncheck();
+  await expect(page.getByRole('button', { name: 'Save direct integration', exact: true })).toBeEnabled();
+  await expect(page.getByText(/Save your connection settings first/)).toHaveCount(0);
+});

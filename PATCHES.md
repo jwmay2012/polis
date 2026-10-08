@@ -262,6 +262,15 @@ live SSO accounts. Install the matching Chromium with `npx playwright install ch
 first. These tests cover inventories larger than the configured page limit,
 primary/unknown tenants, bounded scrolling, membership edits and view boundaries.
 
+For the existing Enterprise SSO, Identity Federation, Directory Sync and portal-SSO
+UI specifications, `npx playwright test --config playwright.upstream-ui.config.ts`
+uses the same isolated memory-backed app with the upstream synthetic credentials.
+Start MockSAML on loopback port 4000 with the fixture configuration from
+`.github/workflows/main.yml` first; OIDC cases also use upstream's public MockLab
+fixture. The harness uses `localhost` for the library's existing local-HTTP exception,
+not a relaxed production transport policy. Fixture saves/deletions wait for completion
+before starting another request; read-only connection diagnostics remain outside Advanced.
+
 Check the library's own TypeScript configuration as well as the application's.
 The root Next.js configuration accepts newer builtins than the standalone
 library configuration; passing the application build alone does not prove the

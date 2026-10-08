@@ -5,7 +5,6 @@ import {
   DirectIntegration,
   directRedirects,
   unusedRedirectUrl,
-  InputWithCopyButton,
   CopyToClipboardButton,
 } from '@boxyhq/internal-ui';
 import type { SAMLSSORecord, OIDCSSORecord } from '@boxyhq/saml-jackson';
@@ -91,7 +90,6 @@ export default function DirectIntegrationSettings({
             </button>
           </>
         }>
-        <InputWithCopyButton label={t('direct_client_id')} text={connection.clientID} />
         <label className='block text-sm'>
           {t('direct_client_secret')}
           <span className='mt-1 flex gap-2'>

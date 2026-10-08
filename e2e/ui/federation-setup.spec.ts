@@ -16,7 +16,9 @@ test.beforeEach(async ({ page, baseURL }) => {
     },
   });
   await page.route('**/api/admin/connections/defaults', (route) =>
-    route.fulfill({ json: { product: 'Acres', products: ['Acres', 'Another product'], complete: true } })
+    route.fulfill({
+      json: { product: 'Example product', products: ['Example product', 'Another product'], complete: true },
+    })
   );
 });
 
@@ -27,10 +29,10 @@ test('setup defaults are federation-only and customer instructions use real prot
 }) => {
   const tenant = `setup-${randomUUID()}`;
   await page.goto('/admin/sso-connection/setup-link/new');
-  await expect(page.getByLabel('Product', { exact: true })).toHaveValue('Acres');
+  await expect(page.getByLabel('Product', { exact: true })).toHaveValue('Example product');
   await page.getByLabel('Product', { exact: true }).fill('');
   await expect(page.getByRole('option')).toHaveCount(2);
-  await page.getByLabel('Product', { exact: true }).fill('Acres');
+  await page.getByLabel('Product', { exact: true }).fill('Example product');
   await page.getByLabel('Tenant', { exact: true }).fill(tenant);
   await expect(page.getByLabel('Default redirect URL', { exact: true })).toHaveCount(0);
   const created = page.waitForResponse(
@@ -80,7 +82,7 @@ test('setup defaults are federation-only and customer instructions use real prot
     const [summary] = await (await customer.request.get(`/api/setup/${token}/sso-connection`)).json();
     const [connection] = await (await page.request.get(`/api/admin/connections/${summary.clientID}`)).json();
     expect(connection.tenant).toBe(tenant);
-    expect(connection.product).toBe('Acres');
+    expect(connection.product).toBe('Example product');
     expect(connection.redirectUrl).toEqual([]);
     expect(connection.defaultRedirectUrl).toBe('http://_boxyhq_redirect_not_in_use');
   } finally {

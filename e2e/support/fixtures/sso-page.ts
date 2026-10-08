@@ -37,13 +37,9 @@ export class SSOPage {
     this.connections = [];
     this.createConnection = this.page.getByTestId('create-connection');
     this.nameInput = this.page.getByLabel('Connection name (Optional)');
-    this.tenantInput = this.page.getByLabel('Tenant');
-    this.productInput = this.page.getByLabel('Product');
-    this.redirectURLSInput = page
-      .getByRole('group')
-      .filter({ hasText: 'Allowed redirect URLs' })
-      .locator('input')
-      .first();
+    this.tenantInput = this.page.getByLabel('Tenant', { exact: true });
+    this.productInput = this.page.getByLabel('Product', { exact: true });
+    this.redirectURLSInput = page.getByLabel('Allowed redirect URL 1', { exact: true });
     this.defaultRedirectURLInput = this.page.getByLabel('Default redirect URL');
     this.metadataUrlInput = this.page.getByLabel('Metadata URL');
     this.oidcDiscoveryUrlInput = this.page.getByLabel('Well-known URL of OpenID Provider');
@@ -124,6 +120,12 @@ export class SSOPage {
     await this.goto();
     const editButton = this.page.getByText(name).locator('xpath=..').getByLabel('Edit');
     await editButton.click();
+    await this.page.waitForURL(
+      (url) =>
+        url.pathname.startsWith('/admin/sso-connection/edit/') ||
+        url.pathname.startsWith('/admin/settings/sso-connection/edit/')
+    );
+    await expect(this.nameInput).toBeVisible();
   }
 
   async toggleConnectionStatus(newStatus: boolean) {
@@ -139,8 +141,32 @@ export class SSOPage {
 
   async updateSSOConnection({ name, url, newStatus }: { name: string; url: string; newStatus?: boolean }) {
     await this.gotoEditView(name);
-    await this.redirectURLSInput.fill(url);
-    await this.saveConnection.click();
+    const direct = this.page.getByText('Advanced: Direct application integration', { exact: true });
+    const directSettings = (await direct.count()) > 0;
+    let redirectInput: Locator;
+    if (directSettings) {
+      await direct.click();
+      redirectInput = this.redirectURLSInput;
+    } else {
+      // The portal's own SSO settings retain the vendor's direct integration form.
+      redirectInput = this.page
+        .getByRole('group')
+        .filter({ hasText: 'Allowed redirect URLs' })
+        .getByRole('textbox')
+        .first();
+    }
+    if ((await redirectInput.inputValue()) !== url) {
+      await redirectInput.fill(url);
+      const saved = this.page.waitForResponse(
+        (response) =>
+          response.url().endsWith('/api/admin/connections') && response.request().method() === 'PATCH'
+      );
+      await this.page
+        .getByRole('button', { name: directSettings ? 'Save direct integration' : 'Save', exact: true })
+        .click();
+      expect((await saved).ok()).toBe(true);
+    }
+    await this.goto();
     if (typeof newStatus === 'boolean') {
       await this.gotoEditView(name);
       await this.toggleConnectionStatus(newStatus);

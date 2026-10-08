@@ -80,6 +80,36 @@ test('admin inventory requires an admin session, not an API key', async ({ reque
   }
 });
 
+test('admin diagnostics retain connection ID, SAML expiry and metadata without enabling direct integration', async ({
+  page,
+  baseURL,
+}) => {
+  const connection = await createConnection(page.request, baseURL!, 'diagnostics.example.test', product());
+  const updated = await page.request.patch('/api/admin/connections', {
+    data: {
+      clientID: connection.clientID,
+      clientSecret: connection.clientSecret,
+      isSAML: true,
+      redirectUrl: [],
+      defaultRedirectUrl: 'http://_boxyhq_redirect_not_in_use',
+    },
+  });
+  expect(updated.ok()).toBe(true);
+  let writes = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'PATCH') writes++;
+  });
+  await page.goto(`/admin/sso-connection/edit/${connection.clientID}`);
+  const details = page.getByRole('region', { name: 'Connection details', exact: true });
+  await expect(details.getByLabel('Connection ID', { exact: true })).toHaveValue(connection.clientID);
+  expect(connection.idpMetadata.validTo).toBeTruthy();
+  await expect(details).toContainText(connection.idpMetadata.validTo);
+  await details.getByText('Identity provider metadata', { exact: true }).click();
+  await expect(details.locator('pre')).toContainText(connection.idpMetadata.entityID);
+  await expect(page.getByLabel('Direct client secret', { exact: true })).toHaveCount(0);
+  expect(writes).toBe(0);
+});
+
 for (const inventory of ['connections', 'identity-federation']) {
   test(`${inventory} inventory does not rescan on window focus`, async ({ page, baseURL }) => {
     const scope = product();
