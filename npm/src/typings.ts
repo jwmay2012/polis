@@ -323,6 +323,7 @@ export interface Profile {
   idHash: string;
   sub?: string;
   email: string;
+  email_verified?: boolean;
   firstName: string;
   lastName: string;
   roles?: string[];
