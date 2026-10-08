@@ -12,6 +12,8 @@ module.exports = withBundleAnalyzer({
   reactStrictMode: true,
   i18n,
   output: 'standalone',
+  // Patched uuid is ESM; database dependencies still require it. The Node 24 image supports that.
+  experimental: { esmExternals: 'loose' },
   webpack: (config, { dev, webpack, isServer }) => {
     // Enable source maps in development mode and for server-side rendering
     if (!dev && isServer) {

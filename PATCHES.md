@@ -132,6 +132,12 @@ rebase/release branch. Published tags are never moved.
     false. No subjects, identities or schema are changed. Files:
     `npm/src/controller/email-verification.ts`, the profile extraction and token
     paths, and `npm/test/controller/email-verification.test.ts`.
+13. **Allow patched ESM dependencies in the server build.**
+    Next's documented loose ESM-external mode permits CommonJS database packages
+    to load the patched ESM-only `uuid` dependency on the Docker image's Node 24
+    runtime. Security overrides and lockfiles are unchanged. Verify both the
+    optimized build and standalone startup when updating these dependencies.
+    File: `next.config.js`.
 
 Invariants the series must keep, and the tests that hold them:
 
