@@ -117,12 +117,13 @@ const jacksonOptions: JacksonOption = {
   authnRequestsSigned: true,
 };
 
-const adminAuthUrl = new URL(process.env.NEXTAUTH_URL || externalUrl);
+const nextAuthUrl = process.env.NEXTAUTH_URL || externalUrl;
+const adminAuthUrl = new URL(nextAuthUrl.startsWith('http') ? nextAuthUrl : `https://${nextAuthUrl}`);
 const adminAuthPath = adminAuthUrl.pathname === '/' ? '/api/auth' : adminAuthUrl.pathname.replace(/\/$/, '');
 const adminPortalSSODefaults = {
   tenant: process.env.ADMIN_PORTAL_SSO_TENANT || '_jackson_boxyhq',
   product: process.env.ADMIN_PORTAL_SSO_PRODUCT || '_jackson_admin_portal',
-  redirectUrl: [externalUrl, `${adminAuthUrl.origin}${adminAuthPath}/callback/boxyhq-saml`],
+  redirectUrl: [`${adminAuthUrl.origin}${adminAuthPath}/callback/boxyhq-saml`],
   defaultRedirectUrl: `${externalUrl}/admin/auth/idp-login`,
 };
 
