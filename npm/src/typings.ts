@@ -458,7 +458,8 @@ export interface JacksonOption {
     requestProfileScope?: boolean; // defaults to true
     forwardOIDCParams?: boolean; // defaults to false
     subjectPrefix?: boolean; // defaults to false
-    redirectExactMatch?: boolean; // defaults to false
+    /** @deprecated Redirect URI matching is always exact; this option is ignored. */
+    redirectExactMatch?: boolean;
   };
   certs?: { publicKey: string; privateKey: string };
   polisLicenseKey?: string;

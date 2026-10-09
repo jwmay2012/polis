@@ -130,9 +130,32 @@ rebase/release branch. Published tags are never moved.
     Test: `npx playwright test --config playwright.guides.config.ts`.
     Refresh screenshots: `POLIS_GUIDE_CAPTURE=1 npx playwright test --config playwright.guides.config.ts`.
     Both use the isolated memory-backed harness; captures never use customer data.
+13. **Validate complete redirect URIs against the requesting client's registration.**
+    OAuth redirects always use exact string equality, including query, case, port
+    and path spelling. Invalid URI syntax, fragments, userinfo, wildcard authorities,
+    raw ASCII controls/whitespace and the unused-redirect marker are refused even if stored.
+    Known list forms (array, JSON-array string, single URL) are checked as string
+    arrays; malformed lists cannot grant redirect or public-client access.
+    Federation requests use only the application's list, including its existing
+    session snapshot at SAML/OIDC callbacks; direct clients use the connection's
+    list. Public-client classification uses the same matcher. Token redirect equality,
+    PKCE and client-secret checks are unchanged. The old `redirectExactMatch` option
+    and `OPENID_REDIRECT_EXACT_MATCH` setting no longer weaken validation.
+    Portal defaults include the exact NextAuth callback. Existing registrations are
+    not rewritten: inventory actual client callbacks before deployment and add any
+    missing complete URLs explicitly. No schema/data migration is performed; rollback
+    is the previous image (and restores its weaker validation). Variable-port native
+    loopback support, registration cleanup and SAML logout policy are separate work.
+    Main files: `npm/src/controller/oauth/allowed.ts`,
+    `npm/src/controller/{oauth,sso-handler}.ts`, `lib/env.ts`.
+    Tests: `npm/test/sso/{allowed,redirect_validation,public_client}.test.ts`
+    and `npm/test/api/portal-sso-defaults.test.ts`.
 
 Invariants the series must keep, and the tests that hold them:
 
+- Every OAuth return matches the complete URI registered by that client; federation
+  and connection lists are not interchangeable, including for in-flight callbacks.
+  `npm/test/sso/allowed.test.ts`, `npm/test/sso/redirect_validation.test.ts`
 - A public downstream client must use PKCE, and only a redirect listed in
   `publicRedirectUrls` is public. Confidential redirects still require the
   client secret. The stored federation session determines that requirement;

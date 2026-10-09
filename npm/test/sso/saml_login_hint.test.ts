@@ -35,7 +35,7 @@ tap.before(async () => {
     product: 'crm',
     name: 'HTTP-POST login_hint test',
     defaultRedirectUrl: 'http://localhost:3366/sso/oauth/completed',
-    redirectUrl: '["http://localhost:3366"]',
+    redirectUrl: '["http://localhost:3366/sso/oauth/completed"]',
     rawMetadata: postOnlyMetadata,
   });
 });

@@ -303,31 +303,13 @@ export class OAuthController implements IOAuthController {
       protocol = isOIDCFederated ? 'oidc-federation' : connectionIsSAML ? 'saml' : 'oidc';
       logContext.bindConnection(connection);
 
-      if (
-        !allowed.redirect(
-          redirect_uri,
-          connection.redirectUrl as string[],
-          this.opts.openid?.redirectExactMatch
-        )
-      ) {
-        if (fedApp) {
-          if (
-            !allowed.redirect(
-              redirect_uri,
-              fedApp.redirectUrl as string[],
-              this.opts.openid?.redirectExactMatch
-            )
-          ) {
-            throw new JacksonError('Redirect URL is not allowed.', 403);
-          }
-        } else {
-          throw new JacksonError('Redirect URL is not allowed.', 403);
-        }
+      if (!allowed.redirect(redirect_uri, fedApp ? fedApp.redirectUrl : connection.redirectUrl)) {
+        throw new JacksonError('Redirect URL is not allowed.', 403);
       }
 
       // Determine if public client flow should be used
       // Requires BOTH: client redirect_uri is in publicRedirectUrls AND connection has publicUpstreamRedirectUri configured
-      const clientIsPublic = fedApp?.publicRedirectUrls?.includes(redirect_uri) || false;
+      const clientIsPublic = allowed.redirect(redirect_uri, fedApp?.publicRedirectUrls);
       const publicUpstreamRedirectUri = connectionIsOIDC
         ? (connection as OIDCSSORecord).oidcProvider?.publicUpstreamRedirectUri
         : undefined;
@@ -945,23 +927,10 @@ export class OAuthController implements IOAuthController {
         session.redirect_uri &&
         !allowed.redirect(
           session.redirect_uri,
-          connection.redirectUrl as string[],
-          this.opts.openid?.redirectExactMatch
+          isOIDCFederated ? session.oidcFederated?.redirectUrl : connection.redirectUrl
         )
       ) {
-        if (isOIDCFederated) {
-          if (
-            !allowed.redirect(
-              session.redirect_uri,
-              session.oidcFederated?.redirectUrl as string[],
-              this.opts.openid?.redirectExactMatch
-            )
-          ) {
-            throw new JacksonError('Redirect URL is not allowed.', 403);
-          }
-        } else {
-          throw new JacksonError('Redirect URL is not allowed.', 403);
-        }
+        throw new JacksonError('Redirect URL is not allowed.', 403);
       }
 
       const { privateKey } = await getDefaultCertificate();
@@ -1161,23 +1130,10 @@ export class OAuthController implements IOAuthController {
           redirect_uri &&
           !allowed.redirect(
             redirect_uri,
-            oidcConnection.redirectUrl as string[],
-            this.opts.openid?.redirectExactMatch
+            isOIDCFederated ? session.oidcFederated?.redirectUrl : oidcConnection.redirectUrl
           )
         ) {
-          if (isOIDCFederated) {
-            if (
-              !allowed.redirect(
-                redirect_uri,
-                session.oidcFederated?.redirectUrl as string[],
-                this.opts.openid?.redirectExactMatch
-              )
-            ) {
-              throw new JacksonError('Redirect URL is not allowed.', 403);
-            }
-          } else {
-            throw new JacksonError('Redirect URL is not allowed.', 403);
-          }
+          throw new JacksonError('Redirect URL is not allowed.', 403);
         }
       }
     } catch (err) {
@@ -1630,7 +1586,7 @@ export class OAuthController implements IOAuthController {
           // Check if this redirect URI is explicitly marked as public client
           const redirectUri = codeVal.requested?.redirect_uri || redirect_uri;
           const publicRedirectUrls = codeVal.session?.oidcFederated?.publicRedirectUrls || [];
-          const isPublicClient = publicRedirectUrls.includes(redirectUri);
+          const isPublicClient = allowed.redirect(redirectUri, publicRedirectUrls);
           logContext.bindContext({
             downstream_client_type: isPublicClient ? 'public' : 'confidential',
             client_auth_branch: isPublicClient ? 'federation_public_pkce' : 'federation_confidential_pkce',

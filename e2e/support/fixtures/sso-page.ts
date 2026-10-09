@@ -93,7 +93,7 @@ export class SSOPage {
       await this.page.getByLabel('Enable direct application integration', { exact: true }).check();
     }
 
-    await this.redirectURLSInput.fill(baseURL!);
+    await this.redirectURLSInput.fill(`${baseURL}/api/auth/callback/boxyhq-saml`);
     // Fill the default redirect URLs for the connection
     await this.defaultRedirectURLInput.fill(`${baseURL}/admin/auth/idp-login`);
     if (type === 'saml') {

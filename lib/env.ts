@@ -74,7 +74,6 @@ const jacksonOptions: JacksonOption = {
     requestProfileScope: process.env.OPENID_REQUEST_PROFILE_SCOPE === 'false' ? false : true,
     forwardOIDCParams: process.env.OPENID_REQUEST_FORWARD_PARAMS === 'true' ? true : false,
     subjectPrefix: process.env.OPENID_SUBJECT_PREFIX === 'true' ? true : false,
-    redirectExactMatch: process.env.OPENID_REDIRECT_EXACT_MATCH === 'true',
   },
   certs: { publicKey: process.env.PUBLIC_KEY || '', privateKey: process.env.PRIVATE_KEY || '' },
   polisLicenseKey: process.env.POLIS_LICENSE_KEY || process.env.BOXYHQ_LICENSE_KEY,
@@ -118,10 +117,12 @@ const jacksonOptions: JacksonOption = {
   authnRequestsSigned: true,
 };
 
+const adminAuthUrl = new URL(process.env.NEXTAUTH_URL || externalUrl);
+const adminAuthPath = adminAuthUrl.pathname === '/' ? '/api/auth' : adminAuthUrl.pathname.replace(/\/$/, '');
 const adminPortalSSODefaults = {
   tenant: process.env.ADMIN_PORTAL_SSO_TENANT || '_jackson_boxyhq',
   product: process.env.ADMIN_PORTAL_SSO_PRODUCT || '_jackson_admin_portal',
-  redirectUrl: [externalUrl],
+  redirectUrl: [externalUrl, `${adminAuthUrl.origin}${adminAuthPath}/callback/boxyhq-saml`],
   defaultRedirectUrl: `${externalUrl}/admin/auth/idp-login`,
 };
 

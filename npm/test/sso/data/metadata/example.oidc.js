@@ -1,6 +1,6 @@
 module.exports = {
   defaultRedirectUrl: 'http://localhost:3366/sso/oauth/oidc',
-  redirectUrl: '["http://localhost:3366"]',
+  redirectUrl: '["http://localhost:3366/sso/oauth/oidc"]',
   tenant: 'oidc.example.com',
   product: 'crm',
   name: 'OIDC Metadata for oidc.example.com',

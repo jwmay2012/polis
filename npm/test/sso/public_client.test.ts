@@ -348,6 +348,59 @@ tap.test('Redirect outside the app allow list', async (t) => {
   );
 });
 
+tap.test('public-client classification uses exact entries for every supported list form', async (t) => {
+  const prefix = mobileRedirect.slice(0, -1);
+  const original = { redirectUrl: app.redirectUrl, publicRedirectUrls: app.publicRedirectUrls };
+  try {
+    for (const publicRedirectUrls of [
+      [mobileRedirect],
+      mobileRedirect,
+      JSON.stringify([mobileRedirect]),
+      [mobileRedirect, 7],
+      '[invalid',
+    ]) {
+      await identityFederationController.app.update({
+        id: app.id,
+        redirectUrl: [webRedirect, mobileRedirect, prefix],
+        publicRedirectUrls,
+      } as any);
+      for (const redirect_uri of [mobileRedirect, prefix]) {
+        const isPublic =
+          redirect_uri === mobileRedirect &&
+          (publicRedirectUrls === mobileRedirect ||
+            publicRedirectUrls === JSON.stringify([mobileRedirect]) ||
+            (Array.isArray(publicRedirectUrls) && publicRedirectUrls.length === 1));
+        const { verifier, challenge } = pkce();
+        const { url, relayState } = await authorize(publicTenant, redirect_uri, challenge);
+        t.equal(
+          url.searchParams.get('redirect_uri'),
+          isPublic ? publicUpstreamRedirectUri : confidentialUpstreamRedirectUri,
+          'authorize classifies the complete URI, not a substring or a malformed list'
+        );
+        const { code } = await callback(relayState);
+        if (isPublic) {
+          t.ok((await redeem({ code, redirect_uri, code_verifier: verifier })).access_token);
+        } else {
+          t.match(
+            await rejection(redeem({ code, redirect_uri, code_verifier: verifier })),
+            {
+              statusCode: 401,
+              message: /Confidential clients must provide client_secret/,
+            },
+            'token redemption makes the same fail-closed client-mode decision'
+          );
+          t.ok(
+            (await redeem({ code, redirect_uri, code_verifier: verifier, client_secret: app.clientSecret }))
+              .access_token
+          );
+        }
+      }
+    }
+  } finally {
+    await identityFederationController.app.update({ id: app.id, ...original });
+  }
+});
+
 tap.test('federation logs preserve both independent client modes', async (t) => {
   for (const tenant of [publicTenant, confidentialTenant]) {
     for (const redirect of [mobileRedirect, webRedirect]) {
