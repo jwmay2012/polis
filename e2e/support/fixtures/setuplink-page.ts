@@ -31,10 +31,12 @@ export class SetupLinkPage {
     await this.page.getByRole('button', { name: 'New Setup Link' }).click();
     await this.page.getByPlaceholder('Acme SSO').fill('acme-test');
     await this.page.getByLabel('Description (Optional)').fill('acme test');
-    await this.page.getByPlaceholder('acme', { exact: true }).fill(this.tenant);
-    await this.page.getByPlaceholder('MyApp').fill(this.product);
-    await this.page.getByPlaceholder('http://localhost:3366', { exact: true }).fill(this.redirectUrl);
-    await this.page.getByPlaceholder('http://localhost:3366/login/').fill(this.defaultRedirectUrl);
+    await this.page.getByLabel('Tenant', { exact: true }).fill(this.tenant);
+    await this.page.getByLabel('Product', { exact: true }).fill(this.product);
+    await this.page.getByText('Advanced: Direct application integration', { exact: true }).click();
+    await this.page.getByLabel('Enable direct application integration', { exact: true }).check();
+    await this.page.getByLabel('Allowed redirect URL 1', { exact: true }).fill(this.redirectUrl);
+    await this.page.getByLabel('Default redirect URL', { exact: true }).fill(this.defaultRedirectUrl);
 
     await this.page.getByRole('button', { name: 'Create Setup Link' }).click();
 

@@ -107,6 +107,19 @@ rebase/release branch. Published tags are never moved.
     migrations change. Files: `internal-ui/src/identity-federation/TenantPicker.tsx`,
     `components/connection/Applications.tsx`, the two existing admin list routes,
     and `lib/admin-inventory.ts`.
+11. **Publish application-scoped email/domain routes independently of connections.**
+    Exact emails win over domains; drafts are inert. Shared lookup distinguishes
+    missing policy from required-but-unavailable. Per-match revisions protect
+    confirmed moves and withdrawals. Retirement is a separate, reported action.
+    The private resolver's application comes from server configuration. Ordinary
+    app/connection deletion checks complete inventories before removing references.
+    Existing apps stay on legacy routing until deliberate import and activation.
+    No tenants, subjects or schema are rewritten. See `ROUTING.md` for the data
+    transition, limitations and tests.
+    PostgreSQL and memory support conditional create/update/delete against stored
+    bytes without changing the schema; unsupported engines refuse these operations.
+    Failed comparisons leave indexes/TTL unchanged. Ordinary storage retains its
+    existing contract, and routing revisions do not depend on encryption or clocks.
 
 Invariants the series must keep, and the tests that hold them:
 
@@ -121,7 +134,7 @@ Invariants the series must keep, and the tests that hold them:
 - A public upstream redirect is used only when both the downstream client is
   public and the connection has `oidcPublicUpstreamRedirectUri`.
   `npm/test/sso/public_client.test.ts`
-- Strict routing needs exactly one active connection for the hinted domain,
+- Legacy strict routing needs exactly one active connection for the hinted domain,
   even when only one connection exists in total. An explicit in-scope
   `idp_hint` remains authoritative with a conflicting or absent `login_hint`.
   `npm/test/sso/domain_routing.test.ts`, `npm/test/controller/domain-utils.test.ts`
@@ -171,6 +184,39 @@ Invariants the series must keep, and the tests that hold them:
   stale-page overwrites but is not an atomic compare-and-swap: concurrent writes
   between GET and PATCH still follow the existing last-write-wins contract.
   `e2e/ui/connection-admin.spec.ts`
+- Published routing reads exact-email then domain bindings before legacy selection.
+  Known unavailable targets never fall through. Deleting an unused app also clears
+  its activation marker, so same-ID recreation does not inherit explicit-only mode.
+  `npm/test/controller/routing.test.ts`, `npm/test/sso/domain_routing.test.ts`
+- Live routing writes are conditional, including creation and withdrawal; unsupported
+  engines refuse them. Failed comparisons change neither TTL nor indexes. Complete,
+  current-content scans guard app and connection deletion before any target is removed.
+  `npm/test/controller/conditional-store.test.ts`, `npm/test/db/conditional-postgres.test.ts`,
+  `npm/test/controller/routing.test.ts`
+- Discovery exposes only the server-configured application's decision, never a catalog.
+  Its exact unauthenticated path must remain excluded from public ingress; publication
+  stays admin-session protected. `e2e/ui/routing-admin.spec.ts`
+- Publishing to a disabled target requires explicit enable confirmation; validate
+  scope, managed mode and reviewed revisions before enabling, then publish before
+  retiring former owners. These are separate writes with explicit partial results.
+  Legacy imports retain paused targets. Product defaults come only from the configured
+  discovery app via an admin-session-only projection, remain editable and do not grant
+  membership. No schema change. `npm/test/api/routing-reactivation.test.ts`,
+  `npm/test/api/connection-defaults.test.ts`, `e2e/ui/routing-admin.spec.ts`
+- Product suggestions project only names from paginated inventories. New customer
+  connections/setup links default to an empty direct allowlist plus the upstream
+  unused-redirect marker; direct integration is an explicit Advanced opt-in. Never
+  infer application returns from IdP callbacks or migrate existing records silently.
+  Refresh vendor editor state after activity/direct changes, guarding unsaved edits.
+  Setup-link scope overrides caller input; callback instructions remain protocol-specific.
+  Empty direct allowlists also reject unsolicited SAML, even if globally enabled later.
+  `npm/test/sso/federation_only.test.ts`, `npm/test/api/connection-defaults.test.ts`,
+  `e2e/ui/federation-setup.spec.ts`, `e2e/ui/routing-admin.spec.ts`
+- Product selection shows known values even when the only value is already selected,
+  supports keyboard/custom input and does not normalize the stored key. Contextual
+  Product/Tenant help is generic, application keys stay read-only and common-field
+  edits preserve provider metadata. The creation selector retains circular radios.
+  `e2e/ui/scope-fields.spec.ts`
 
 Upstream status: none of the patches is upstream. Patches 1, 4, 5, 6, and 9 are
 generic enough to propose after this release is accepted.
@@ -215,6 +261,15 @@ credentials and local metadata; it does not run the default E2E setup or use
 live SSO accounts. Install the matching Chromium with `npx playwright install chromium`
 first. These tests cover inventories larger than the configured page limit,
 primary/unknown tenants, bounded scrolling, membership edits and view boundaries.
+
+For the existing Enterprise SSO, Identity Federation, Directory Sync and portal-SSO
+UI specifications, `npx playwright test --config playwright.upstream-ui.config.ts`
+uses the same isolated memory-backed app with the upstream synthetic credentials.
+Start MockSAML on loopback port 4000 with the fixture configuration from
+`.github/workflows/main.yml` first; OIDC cases also use upstream's public MockLab
+fixture. The harness uses `localhost` for the library's existing local-HTTP exception,
+not a relaxed production transport policy. Fixture saves/deletions wait for completion
+before starting another request; read-only connection diagnostics remain outside Advanced.
 
 Check the library's own TypeScript configuration as well as the application's.
 The root Next.js configuration accepts newer builtins than the standalone

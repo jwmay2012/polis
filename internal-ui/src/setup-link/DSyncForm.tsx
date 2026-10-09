@@ -3,7 +3,7 @@ import { useFormik } from 'formik';
 import { Button } from 'rsc-daisyui';
 import { useTranslation } from 'next-i18next';
 
-import { Card } from '../shared';
+import { Card, ScopeFields } from '../shared';
 import type { SetupLink } from '../types';
 import { defaultHeaders } from '../utils';
 import { SetupLinkInfo } from './SetupLinkInfo';
@@ -85,36 +85,13 @@ export const DSyncForm = ({
                 value={formik.values.name}
               />
             </label>
-            <label className='form-control w-full'>
-              <div className='label'>
-                <span className='label-text'>{t('bui-shared-tenant')}</span>
-              </div>
-              <input
-                type='text'
-                placeholder='acme'
-                className='input input-bordered w-full text-sm'
-                name='tenant'
-                required
-                onChange={formik.handleChange}
-                value={formik.values.tenant}
-              />
-            </label>
-            {!excludeFields?.includes('product') && (
-              <label className='form-control w-full'>
-                <div className='label'>
-                  <span className='label-text'>{t('bui-shared-product')}</span>
-                </div>
-                <input
-                  type='text'
-                  placeholder='MyApp'
-                  className='input input-bordered w-full text-sm'
-                  name='product'
-                  required
-                  onChange={formik.handleChange}
-                  value={formik.values.product}
-                />
-              </label>
-            )}
+            <ScopeFields
+              directory
+              tenant={formik.values.tenant}
+              product={formik.values.product}
+              hideProduct={excludeFields?.includes('product')}
+              onChange={(field, value) => formik.setFieldValue(field, value)}
+            />
             <label className='form-control w-full'>
               <div className='label'>
                 <span className='label-text'>{t('bui-sl-webhook-url')}</span>

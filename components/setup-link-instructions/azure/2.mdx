@@ -10,6 +10,9 @@ Click **Edit** on the **Basic SAML Configuration** section.
 
 Enter the following values in the **Basic SAML Configuration** section on the next screen:
 
+The Reply URL receives SAML responses from your identity provider. It is not a
+post-login application destination. Copy the value supplied by the service here.
+
 <div className='flex flex-col gap-4'>
   <div>
     <InputWithCopyButton text={spConfig.acsUrl} label='Reply URL (Assertion Consumer Service URL)' />

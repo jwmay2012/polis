@@ -1,8 +1,8 @@
 import { useTranslation } from 'next-i18next';
 import { useRouter } from 'next/router';
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { errorToast, successToast } from '@components/Toaster';
-import { LinkBack } from '@boxyhq/internal-ui';
+import { LinkBack, ScopeFields } from '@boxyhq/internal-ui';
 import { CreateDirectory as CreateDSync } from '@boxyhq/react-ui/dsync';
 import { BOXYHQ_UI_CSS } from '@components/styles';
 
@@ -19,6 +19,8 @@ const CreateDirectory = ({
 }: CreateDirectoryProps) => {
   const { t } = useTranslation('common');
   const router = useRouter();
+  const [scope, setScope] = useState({ tenant: '', product: '' });
+  const fields = useRef<HTMLDivElement>(null);
 
   const backUrl = setupLinkToken ? `/setup/${setupLinkToken}/directory-sync` : '/admin/directory-sync';
 
@@ -26,9 +28,30 @@ const CreateDirectory = ({
     <div>
       <LinkBack href={backUrl} />
       <h2 className='mb-5 mt-5 font-bold text-gray-700 md:text-xl'>{t('create_dsync_connection')}</h2>
-      <div className='min-w-[28rem] rounded border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800'>
+      <div
+        className='min-w-[28rem] rounded border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800'
+        onSubmitCapture={(event) => {
+          for (const input of fields.current?.querySelectorAll('input') || []) {
+            if (!input.reportValidity()) {
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
+          }
+        }}>
+        {!setupLinkToken && (
+          <div ref={fields}>
+            <ScopeFields
+              directory
+              {...scope}
+              onChange={(field, value) => setScope({ ...scope, [field]: value })}
+            />
+          </div>
+        )}
         <CreateDSync
           displayHeader={false}
+          tenant={setupLinkToken ? undefined : scope.tenant}
+          product={setupLinkToken ? undefined : scope.product}
           defaultWebhookEndpoint={defaultWebhookEndpoint}
           defaultWebhookSecret={defaultWebhookSecret}
           classNames={BOXYHQ_UI_CSS}
@@ -47,7 +70,7 @@ const CreateDirectory = ({
           excludeFields={
             setupLinkToken
               ? ['name', 'tenant', 'product', 'webhook_url', 'webhook_secret', 'log_webhook_events']
-              : ['log_webhook_events']
+              : ['log_webhook_events', 'tenant', 'product']
           }
           urls={{
             post: setupLinkToken

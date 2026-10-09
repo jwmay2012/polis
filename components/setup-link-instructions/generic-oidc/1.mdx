@@ -1,5 +1,10 @@
 ## Step 1: Create Application
 
+Register the callback below with your identity provider for this server-side application.
+It receives the identity provider's OIDC response. It is not an application-return
+destination after login. Copy the value supplied here; your service administrator
+manages the application-return settings separately.
+
 <div className='flex flex-col gap-4'>
   <div>
     <InputWithCopyButton text={oidcCallbackUrl} label='Callback URL' />

@@ -6,7 +6,7 @@ import { useFormik } from 'formik';
 import EyeIcon from '@heroicons/react/24/outline/EyeIcon';
 import EyeSlashIcon from '@heroicons/react/24/outline/EyeSlashIcon';
 
-import { Card } from '../shared';
+import { Card, ScopeLabel } from '../shared';
 import { defaultHeaders } from '../utils';
 import { ItemList } from '@boxyhq/react-ui/shared';
 import { CopyToClipboardButton } from '../shared/InputWithCopyButton';
@@ -84,29 +84,31 @@ export const Edit = ({
                     required
                   />
                 </label>
-                <label className='form-control w-full'>
+                <div className='form-control w-full'>
                   <div className='label'>
-                    <span className='label-text'>{t('bui-shared-tenant')}</span>
+                    <ScopeLabel field='tenant' context='application' htmlFor='app-tenant' />
                   </div>
                   <input
+                    id='app-tenant'
                     type='text'
                     className='input input-bordered w-full text-sm bg-gray-100'
                     value={app.tenant}
                     readOnly={true}
                   />
-                </label>
+                </div>
                 {!excludeFields?.includes('product') && (
-                  <label className='form-control w-full'>
+                  <div className='form-control w-full'>
                     <div className='label'>
-                      <span className='label-text'>{t('bui-shared-product')}</span>
+                      <ScopeLabel field='product' context='application' htmlFor='app-product' />
                     </div>
                     <input
+                      id='app-product'
                       type='text'
                       className='input input-bordered w-full text-sm bg-gray-100'
                       value={app.product}
                       readOnly={true}
                     />
-                  </label>
+                  </div>
                 )}
                 {connectionIsOIDC && (
                   <label className='form-control w-full'>

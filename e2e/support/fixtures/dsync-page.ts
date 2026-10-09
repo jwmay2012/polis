@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import type { DirectorySyncProviders } from '../data/dsync';
 
 export class DSyncPage {
@@ -18,8 +18,8 @@ export class DSyncPage {
     await this.page.getByRole('link', { name: 'New Directory' }).click();
     await this.page.getByLabel('Directory name').fill('DS-1');
     await this.page.getByLabel('Directory provider').selectOption({ value: provider });
-    await this.page.getByLabel('Tenant').fill(this.tenant);
-    await this.page.getByLabel('Product').fill(this.product);
+    await this.page.getByLabel('Tenant', { exact: true }).fill(this.tenant);
+    await this.page.getByLabel('Product', { exact: true }).fill(this.product);
     await this.page.getByLabel('Webhook URL').fill(`${baseURL}/api/hello`);
     await this.page.getByLabel('Webhook secret').fill('secret');
     await this.page.getByRole('button', { name: 'Create Directory' }).click();
@@ -89,6 +89,17 @@ export class DSyncPage {
     } else {
       await checkBox.uncheck();
     }
-    await this.page.getByRole('button', { name: 'Save' }).click();
+    const save = this.page.getByRole('button', { name: 'Save', exact: true });
+    await expect(save).not.toHaveClass(/btn-disabled/);
+    const saved = this.page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.endsWith(`/directory-sync/${directory.id}`) &&
+        response.request().method() === 'PATCH'
+    );
+    await save.click();
+    const response = await saved;
+    expect(response.ok()).toBe(true);
+    expect(response.request().postDataJSON().log_webhook_events).toBe(enable);
+    await this.page.waitForURL((url) => url.pathname === '/admin/directory-sync');
   }
 }

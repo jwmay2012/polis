@@ -8,11 +8,13 @@ export class IdentityFederationPage {
   readonly ENTITY_ID = 'https://saml.boxyhq.com';
   constructor(public readonly page: Page) {
     this.editButton = this.page.getByRole('cell', { name: 'Edit' }).getByRole('button');
-    this.acsUrlInput = this.page.getByLabel('ACS URL');
+    this.acsUrlInput = this.page.getByLabel('ACS URL', { exact: true });
   }
 
   async goto() {
     await this.page.getByRole('link', { name: 'Apps' }).click();
+    // Wait for the new page before a generic Edit locator can match the previous page's table.
+    await this.page.waitForURL((url) => url.pathname === '/admin/identity-federation');
   }
 
   async createApp({
@@ -34,8 +36,8 @@ export class IdentityFederationPage {
     }
     // Common config
     await this.page.getByPlaceholder('Your app').and(this.page.getByLabel('Name')).fill(name);
-    await this.page.getByPlaceholder('example.com').and(this.page.getByLabel('Tenant')).fill(this.TENANT);
-    await this.page.getByLabel('Product').fill(this.PRODUCT);
+    await this.page.getByLabel('Tenant', { exact: true }).fill(this.TENANT);
+    await this.page.getByLabel('Product', { exact: true }).fill(this.PRODUCT);
 
     if (type === 'saml') {
       await this.acsUrlInput.fill(acsUrl ?? `${baseURL}/api/oauth/saml`);
@@ -59,7 +61,7 @@ export class IdentityFederationPage {
       oidcClientSecret = await this.page
         .locator('label')
         .filter({ hasText: 'Client Secret' })
-        .getByRole('textbox')
+        .locator('input')
         .inputValue();
     }
 
@@ -75,15 +77,16 @@ export class IdentityFederationPage {
   async updateApp({ acsUrl }: { acsUrl?: string }) {
     await this.goto();
     await this.editButton.click();
-    if (acsUrl) {
+    if (acsUrl && (await this.acsUrlInput.inputValue()) !== acsUrl) {
       await this.acsUrlInput.fill(acsUrl);
+      await expect(this.acsUrlInput).toHaveValue(acsUrl);
+      const save = this.page
+        .locator('form')
+        .filter({ has: this.acsUrlInput })
+        .getByRole('button', { name: /^Save Changes/ });
+      await expect(save).not.toHaveClass(/btn-disabled/);
+      await save.click();
     }
-    await this.page
-      .locator('form')
-      .filter({ hasText: 'NameTenantProductEntity ID /' })
-      .getByRole('button', { name: 'Save Changes' })
-      .first()
-      .click();
   }
 
   async deleteApp() {
@@ -91,6 +94,13 @@ export class IdentityFederationPage {
     await this.page.waitForURL(/.*admin\/identity-federation$/);
     await this.editButton.click();
     await this.page.locator('.card').getByRole('button', { name: 'Delete' }).click();
+    const deleted = this.page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.startsWith('/api/admin/identity-federation/') &&
+        response.request().method() === 'DELETE'
+    );
     await this.page.getByTestId('confirm-delete').click();
+    expect((await deleted).ok()).toBe(true);
+    await this.page.waitForURL((url) => url.pathname === '/admin/identity-federation');
   }
 }

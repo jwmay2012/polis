@@ -1,7 +1,7 @@
-import { Index, Records, SortOrder, Storable } from '../typings';
+import { ConditionalStore, Encrypted, Index, Records, SortOrder } from '../typings';
 import * as dbutils from './utils';
 
-class Store implements Storable {
+class Store implements ConditionalStore {
   private namespace: string;
   private db: any;
   private ttl: number;
@@ -55,6 +55,25 @@ class Store implements Storable {
     return await this.db.delete(this.namespace, dbutils.keyDigest(key));
   }
 
+  async getVersioned<T = any>(key: string): Promise<{ value: T; version: Encrypted } | null> {
+    return this.db.getVersioned(this.namespace, dbutils.keyDigest(key));
+  }
+
+  async putIfMatch(key: string, val: unknown, expected: Encrypted | null, ...indexes: Index[]) {
+    return this.db.putIfMatch(
+      this.namespace,
+      dbutils.keyDigest(key),
+      val,
+      expected,
+      this.ttl,
+      ...indexes.map((index) => ({ ...index, value: dbutils.keyDigest(index.value) }))
+    );
+  }
+
+  async deleteIfMatch(key: string, expected: Encrypted): Promise<boolean> {
+    return this.db.deleteIfMatch(this.namespace, dbutils.keyDigest(key), expected);
+  }
+
   async deleteMany(keys: string[]): Promise<void> {
     return await this.db.deleteMany(
       this.namespace,
@@ -64,7 +83,7 @@ class Store implements Storable {
 }
 
 export default {
-  new: (namespace: string, db: any, ttl = 0): Storable => {
+  new: (namespace: string, db: any, ttl = 0): ConditionalStore => {
     return new Store(namespace, db, ttl);
   },
 };

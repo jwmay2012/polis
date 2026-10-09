@@ -5,6 +5,7 @@ import { useDirectory } from '../hooks';
 import { DirectoryTab } from '../dsync';
 import type { Directory } from '../types';
 import { Loading, Error, PageHeader, Badge, Alert, InputWithCopyButton, LinkPrimary } from '../shared';
+import { ScopeLabel } from '../shared/ScopeLabel';
 
 type ExcludeFields = keyof Pick<Directory, 'id' | 'tenant' | 'product' | 'webhook'>;
 
@@ -70,13 +71,17 @@ export const DirectoryInfo = ({
             )}
             {!excludeFields.includes('tenant') && (
               <div className='px-4 py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6'>
-                <dt className='text-sm font-medium text-gray-500'>{t('bui-shared-tenant')}</dt>
+                <dt className='text-sm font-medium text-gray-500'>
+                  <ScopeLabel field='tenant' context='directory' />
+                </dt>
                 <dd className='mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0'>{directory.tenant}</dd>
               </div>
             )}
             {!excludeFields.includes('product') && (
               <div className='px-4 py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6'>
-                <dt className='text-sm font-medium text-gray-500'>{t('bui-shared-product')}</dt>
+                <dt className='text-sm font-medium text-gray-500'>
+                  <ScopeLabel field='product' context='directory' />
+                </dt>
                 <dd className='mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0'>{directory.product}</dd>
               </div>
             )}

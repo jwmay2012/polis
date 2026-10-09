@@ -21,3 +21,11 @@ export { Alert } from './Alert';
 export { InputWithCopyButton, CopyToClipboardButton } from './InputWithCopyButton';
 export { IconButton } from './IconButton';
 export { PrismLoader } from './PrismLoader';
+export { ScopeLabel } from './ScopeLabel';
+export { ScopeFields } from './ScopeFields';
+export {
+  DirectIntegration,
+  directRedirects,
+  unusedRedirectUrl,
+  type DirectRedirects,
+} from './DirectIntegration';

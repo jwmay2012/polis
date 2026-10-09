@@ -30,24 +30,29 @@ const CreateSSOConnection = ({ setupLinkToken, idpType }: CreateSSOConnectionPro
     post: `/api/setup/${setupLinkToken}/sso-connection`,
   };
 
-  return idpType === 'saml' ? (
-    <CreateSAML
-      variant='basic'
-      urls={urls}
-      successCallback={onSuccess}
-      errorCallback={onError}
-      classNames={BOXYHQ_UI_CSS}
-      displayHeader={false}
-    />
-  ) : (
-    <CreateOIDC
-      variant='basic'
-      urls={urls}
-      successCallback={onSuccess}
-      errorCallback={onError}
-      classNames={BOXYHQ_UI_CSS}
-      displayHeader={false}
-    />
+  return (
+    <>
+      <p className='mb-4 text-sm text-gray-500'>{t('setup_customer_activation')}</p>
+      {idpType === 'saml' ? (
+        <CreateSAML
+          variant='basic'
+          urls={urls}
+          successCallback={onSuccess}
+          errorCallback={onError}
+          classNames={BOXYHQ_UI_CSS}
+          displayHeader={false}
+        />
+      ) : (
+        <CreateOIDC
+          variant='basic'
+          urls={urls}
+          successCallback={onSuccess}
+          errorCallback={onError}
+          classNames={BOXYHQ_UI_CSS}
+          displayHeader={false}
+        />
+      )}
+    </>
   );
 };
 

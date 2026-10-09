@@ -68,12 +68,46 @@ test.beforeEach(async ({ page, baseURL }) => {
 });
 
 test('admin inventory requires an admin session, not an API key', async ({ request }) => {
+  const defaults = await request.get('/api/admin/connections/defaults', {
+    headers: { Authorization: 'Api-Key local-inventory-api-key' },
+  });
+  expect(defaults.status()).toBe(401);
   for (const endpoint of ['connections', 'identity-federation']) {
     const response = await request.get(`/api/admin/${endpoint}?inventory=true&product=example`, {
       headers: { Authorization: 'Api-Key local-inventory-api-key' },
     });
     expect(response.status()).toBe(401);
   }
+});
+
+test('admin diagnostics retain connection ID, SAML expiry and metadata without enabling direct integration', async ({
+  page,
+  baseURL,
+}) => {
+  const connection = await createConnection(page.request, baseURL!, 'diagnostics.example.test', product());
+  const updated = await page.request.patch('/api/admin/connections', {
+    data: {
+      clientID: connection.clientID,
+      clientSecret: connection.clientSecret,
+      isSAML: true,
+      redirectUrl: [],
+      defaultRedirectUrl: 'http://_boxyhq_redirect_not_in_use',
+    },
+  });
+  expect(updated.ok()).toBe(true);
+  let writes = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'PATCH') writes++;
+  });
+  await page.goto(`/admin/sso-connection/edit/${connection.clientID}`);
+  const details = page.getByRole('region', { name: 'Connection details', exact: true });
+  await expect(details.getByLabel('Connection ID', { exact: true })).toHaveValue(connection.clientID);
+  expect(connection.idpMetadata.validTo).toBeTruthy();
+  await expect(details).toContainText(connection.idpMetadata.validTo);
+  await details.getByText('Identity provider metadata', { exact: true }).click();
+  await expect(details.locator('pre')).toContainText(connection.idpMetadata.entityID);
+  await expect(page.getByLabel('Direct client secret', { exact: true })).toHaveCount(0);
+  expect(writes).toBe(0);
 });
 
 for (const inventory of ['connections', 'identity-federation']) {
@@ -387,13 +421,8 @@ test('normal admin creation opens the connection editor and its Applications pan
   await page.getByLabel('Connection name (Optional)', { exact: true }).fill('New customer connection');
   await page.getByLabel('Tenant', { exact: true }).fill('new-customer.example.test');
   await page.getByLabel('Product', { exact: true }).fill(scope);
-  await page
-    .getByRole('group')
-    .filter({ hasText: 'Allowed redirect URLs' })
-    .getByRole('textbox')
-    .first()
-    .fill(baseURL!);
-  await page.getByLabel('Default redirect URL', { exact: true }).fill(`${baseURL}/callback`);
+  await expect(page.getByLabel('Allowed redirect URL 1', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Default redirect URL', { exact: true })).toHaveCount(0);
   await page
     .getByLabel('Raw IdP XML', { exact: true })
     .fill(
@@ -404,4 +433,8 @@ test('normal admin creation opens the connection editor and its Applications pan
   await page.getByRole('button', { name: /^save$/i }).click();
   await expect(page).toHaveURL(/\/admin\/sso-connection\/edit\//);
   await expect(page.getByRole('region', { name: 'Applications', exact: true })).toBeVisible();
+  const id = new URL(page.url()).pathname.split('/').pop();
+  const [saved] = await (await page.request.get(`/api/admin/connections/${id}`)).json();
+  expect(saved.redirectUrl).toEqual([]);
+  expect(saved.defaultRedirectUrl).toBe('http://_boxyhq_redirect_not_in_use');
 });
