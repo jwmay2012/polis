@@ -58,7 +58,7 @@
   "connection_suggestions_incomplete": "Product suggestions are incomplete. You can enter a product manually.",
   "direct_advanced": "Advanced: Direct application integration",
   "direct_enable": "Enable direct application integration",
-  "direct_explanation": "Use this only when an application connects directly with this connection's client ID and secret. Federation applications manage their own client credentials and allowed return URLs. These are not the callback URLs to register with the identity provider.",
+  "direct_explanation": "Use this only when an application connects directly with this connection's client ID and secret. Enter complete callback URLs; matching is exact. Federation applications manage their own client credentials and allowed return URLs. These are not the callback URLs to register with the identity provider.",
   "direct_disabled": "Direct integration is disabled. Application return URLs are managed by the federation application.",
   "direct_federation_default": "Federation-only by default. Application membership and sign-in domains are configured separately.",
   "direct_default_help": "Application endpoint that can receive a Polis authorization code for IdP-initiated SAML. It is not an IdP callback or an arbitrary landing page. Setting it does not enable IdP-initiated login; that requires separate service configuration and application support.",

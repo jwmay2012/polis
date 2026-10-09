@@ -1,52 +1,30 @@
-const redirectUrlPlaceholder = 'http://_boxyhq_redirect_not_in_use';
+import { extractRedirectUrls } from '../utils';
 
-export const redirect = (
-  redirectUrl: string,
-  redirectUrls: string[],
-  redirectExactMatch: boolean | undefined
-): boolean => {
-  // Don't allow redirect to URL placeholder
-  if (redirectUrl === redirectUrlPlaceholder) {
+export const redirect = (redirectUrl: string, redirectUrls: unknown): boolean => {
+  if (typeof redirectUrl !== 'string' || redirectUrl === 'http://_boxyhq_redirect_not_in_use') {
     return false;
   }
-
-  const url: URL = new URL(redirectUrl);
-
-  for (const idx in redirectUrls) {
-    const rUrl: URL = new URL(redirectUrls[idx]);
-
-    let hostname = url.hostname;
-    let hostNameAllowed = rUrl.hostname;
-
-    // allow subdomain globbing *.example.com only
-    try {
-      if (rUrl.hostname.startsWith('*.')) {
-        hostNameAllowed = rUrl.hostname.slice(2);
-        hostname = hostname.slice(hostname.indexOf('.') + 1);
-      }
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    } catch (e) {
-      // no-op
+  // Check raw syntax too: URL parsing erases empty fragments/userinfo and some controls.
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x20\x7f#]/.test(redirectUrl)) return false;
+  try {
+    const url = new URL(redirectUrl);
+    const authority = redirectUrl.match(/^[a-z][a-z\d+.-]*:\/\/([^/?#]*)/i)?.[1] || '';
+    if (
+      /[@*]/.test(authority) ||
+      url.username ||
+      url.password ||
+      url.hostname.includes('*') ||
+      ((url.protocol === 'http:' || url.protocol === 'https:') && redirectUrl.includes('\\'))
+    ) {
+      return false;
     }
-
-    if (redirectExactMatch) {
-      // check for pathname as well
-      if (
-        rUrl.protocol === url.protocol &&
-        hostNameAllowed === hostname &&
-        rUrl.port === url.port &&
-        rUrl.pathname === url.pathname
-      ) {
-        return true;
-      }
-
-      continue;
-    }
-
-    if (rUrl.protocol === url.protocol && hostNameAllowed === hostname && rUrl.port === url.port) {
-      return true;
-    }
+    const urls = extractRedirectUrls(redirectUrls as string[] | string);
+    // Compare original strings, never parsed/normalized URL components or string substrings.
+    return (
+      Array.isArray(urls) && urls.every((value) => typeof value === 'string') && urls.includes(redirectUrl)
+    );
+  } catch {
+    return false;
   }
-
-  return false;
 };

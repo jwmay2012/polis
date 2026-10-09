@@ -1,7 +1,7 @@
 // For SLO
 module.exports = {
   defaultRedirectUrl: 'http://localhost:3366/sso/oauth/completed',
-  redirectUrl: '["http://localhost:3366"]',
+  redirectUrl: '["http://localhost:3366/sso/oauth/completed"]',
   tenant: 'example.com',
   product: 'crm',
   name: 'SAML Metadata for example.com',

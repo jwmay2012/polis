@@ -45,7 +45,8 @@ export class IdentityFederationPage {
         .getByLabel('Entity ID / Audience URI / Audience Restriction')
         .fill(entityID ?? this.ENTITY_ID);
     } else {
-      await this.page.locator('input[name="item"]').fill(redirectUrl ?? baseURL);
+      // The portal's OIDC connection is this app's client, so it returns to the broker callback.
+      await this.page.locator('input[name="item"]').fill(redirectUrl ?? `${baseURL}/api/oauth/oidc`);
     }
 
     await this.page.getByRole('button', { name: 'Create App' }).click();
