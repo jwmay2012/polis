@@ -1,5 +1,26 @@
 # Explicit login routing
 
+## Administration guide
+
+The admin sidebar and Dashboard link to `/admin/guides/enterprise-sso`. The walkthrough
+is static MDX in `components/guides/enterprise-sso.mdx`, with printable, annotated
+screenshots in `public/guides`. It never reads or changes customer configuration.
+Keep deployment-specific URLs, organization enrollment and rollout procedures in
+the consuming application's runbook, not this generic guide.
+
+After relevant UI changes, regenerate the screenshots from the isolated memory-backed
+fixture (synthetic customers only), visually review them, then run the read-only page tests:
+
+```sh
+POLIS_ADMIN_TEST_PORT=54326 POLIS_GUIDE_CAPTURE=1 npx playwright test --config playwright.guides.config.ts
+POLIS_ADMIN_TEST_PORT=54326 npx playwright test --config playwright.guides.config.ts
+```
+
+The capture test adds numbered DOM callouts before taking actual UI screenshots;
+ordinary test runs never rewrite the images. Do not capture real customer data,
+provider secrets or usable setup-link URLs. Use the guide's Print / save PDF button
+for a shareable copy instead of maintaining a second document.
+
 An OIDC federation application can route literal domains and exact email addresses
 to existing connections. Exact email wins over domain. Tenant/product membership
 remains the eligibility boundary. This does not rename tenants, change subjects,

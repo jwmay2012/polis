@@ -1,0 +1,183 @@
+# Set up enterprise SSO
+
+Use this walkthrough to configure a customer's identity provider, test one account,
+then enable the intended email domains. Screenshots use synthetic examples—not
+values to copy into a real customer configuration. Nothing on this guide changes
+configuration; the links open the corresponding administration pages.
+
+**Before starting:** your operator must have configured the consuming application,
+its federation app and published-routing/discovery integration. If publication is
+unavailable because the app still uses legacy tenant routing, ask the operator to
+complete that setup. Do not activate or migrate an entire app as an onboarding shortcut.
+
+Confirm a pilot user, the intended application organization/access, and who approves
+domain-wide activation. Connection setup does not create organization memberships
+or merge existing user identities.
+
+## In this guide
+
+1. [Prepare the customer configuration](#prepare)
+2. [Exchange identity-provider details](#provider)
+3. [Attach the customer to the application](#membership)
+4. [Publish and test one account](#pilot)
+5. [Publish the domain or replace a connection](#publish)
+6. [Pause, restore and troubleshoot](#maintain)
+
+<h2 id='prepare'>1. Prepare the customer configuration</h2>
+
+Open [Enterprise SSO → Setup Links](/admin/sso-connection/setup-link) and choose
+**New Setup Link**. Give it a recognizable customer name and description.
+
+| Field         | Meaning                                                                   | Example                                   |
+| ------------- | ------------------------------------------------------------------------- | ----------------------------------------- |
+| Tenant        | Stable customer key within the Product; several connections can share it. | `example-customer`                        |
+| Product       | Application grouping; must match the federation app's Product exactly.    | `Example product`                         |
+| Login matches | Published email/domain rules selecting a connection; configured later.    | `pilot@example.test`, then `example.test` |
+
+Use the existing Product selected by the application configuration. Do not rename
+an existing Tenant/Product to change login domains. Leave **Advanced: Direct
+application integration** disabled when using federation; the app owns its return URLs.
+
+<GuideFigure image="setupLink" alt="Setup-link form showing customer Tenant, configured Product and Create Setup Link button">
+
+**1:** Choose the stable customer key. **2:** Use the matching application Product.
+**3:** Create a short-lived setup link, then share it securely with the customer's IdP administrator.
+
+</GuideFigure>
+
+Treat the generated URL as a bearer capability: anyone with it can access that
+customer's setup. Do not include it in general documentation or screenshots.
+An existing unexpired link may be returned with its original settings. Explicit
+replacement invalidates that old URL, not existing connections.
+
+If you are entering the customer's details yourself, use
+[New SSO Connection](/admin/sso-connection/new) with the same Tenant/Product instead.
+Saving configuration does **not** publish login rules.
+Before adding a second active connection for the same Tenant/Product, have the
+operator check any other apps still using legacy tenant routing; those apps may
+otherwise see an ambiguous connection choice.
+
+<h2 id='provider'>2. Exchange identity-provider details</h2>
+
+The customer follows the setup link and selects their provider/protocol. Have them
+copy the values displayed by **their actual setup wizard**, not this guide's examples.
+
+For **OIDC**, they register the displayed callback, then supply their application's
+client ID, client secret and discovery URL. For **SAML**, they register the displayed
+Reply/ACS URL and Entity ID, then supply a metadata URL or XML.
+
+<GuideFigure image="customerOIDC" alt="OIDC customer instructions with the service's Callback URL highlighted">
+
+**1:** This callback receives the identity provider's OIDC response. It is not a
+post-login application destination.
+
+</GuideFigure>
+
+<GuideFigure image="customerSAML" alt="SAML customer instructions with the Reply URL and Entity ID highlighted">
+
+**1:** SAML Reply/ACS URL. **2:** Entity ID. These are different values with different
+purposes; keep the exact spelling and trailing-slash behavior shown in the wizard.
+
+</GuideFigure>
+
+These IdP callbacks are **not** the connection's Advanced Allowed/Default redirect
+fields. Do not copy them there. Custom upstream callback overrides need review by
+the integration owner. Exchange provider secrets only through an approved secure channel.
+
+Check the asserted email and required claims with the application owner. For SAML,
+the connection editor also exposes the signing-certificate expiry and public IdP
+metadata. Saving the customer configuration still does not publish any domain.
+
+<h2 id='membership'>3. Attach the customer to the application</h2>
+
+Open the connection and select the intended app in **Applications**. Its Product
+must match the connection. This adds the connection's Tenant to the app's **Tenants**
+list; do not change the app's own singular Tenant field.
+
+<GuideFigure image="membership" alt="Applications panel with the intended federation application selected">
+
+**1:** Membership makes every connection with this Tenant/Product eligible for the
+app. It does not select a connection for an email or publish a domain.
+
+</GuideFigure>
+
+If the app is missing, check Product spelling/capitalization and ask its owner to
+verify configuration. Resolve any application-side account or organization enrollment
+rules before publishing. Eligibility, routing and application access are separate.
+
+<h2 id='pilot'>4. Publish and test one account</h2>
+
+In **Login routing**, select the intended application and enter one agreed exact
+email. An exact-email rule takes priority over a domain rule, allowing a pilot to
+use a replacement connection while other users stay on the existing connection.
+
+<GuideFigure image="pilot" alt="Login routing panel with a single pilot email and Review and publish highlighted">
+
+**1:** Start with one exact address. **2:** Review the destination and confirm
+**Require SSO for these matches**. **Save draft** alone changes no live routing.
+
+</GuideFigure>
+
+Test through the consuming application. Confirm the intended upstream account,
+completed linking when required, the resulting application identity and the expected
+organization/access. Reaching the IdP or getting a redirect is not a successful test.
+Exercise browser and supported native clients; older clients may have separate
+discovery configuration that the application owner must reconcile.
+
+If the user lands in the wrong account or organization, stop before expanding the
+rule. Record the time, environment, attempted email and connection ID for support;
+do not include passwords, tokens or setup-link URLs.
+
+<h2 id='publish'>5. Publish the domain or replace a connection</h2>
+
+After pilot acceptance and approval, enter the intended domain(s), without `@`, and
+review publication. Confirm application-side enrollment for every domain/alias first.
+
+<GuideFigure image="move" alt="Publication confirmation showing an existing domain owner, the retirement checkbox and the confirmation button">
+
+**1:** Review whether former connections should be disabled after their last published
+match moves. This option is selected by default; clear it to leave their activity
+unchanged instead of disabling them. **2:** Confirm only the listed matches. Other
+matches stay where they are.
+
+</GuideFigure>
+
+A disabled destination requires explicit enabling. Read the warning: enabling also
+resumes that connection's other uses. Former connections still serving published
+matches remain active. Disabling a connection also affects its direct integrations
+and other applications, so review the impact—not just the domain in front of you.
+
+Enable, publish and retire are separate operations. Read every result; a partial
+failure is not full success. Re-review if another operator changed a rule. Confirm
+the published owner and test the pilot plus another intended account after the move.
+
+After the domain move, withdraw the redundant pilot exact-email rule, or deliberately
+keep it and record why. Otherwise it will still override later domain moves or rollback
+for that address. Test the pilot again after withdrawing its override.
+
+Moving rules between tenants does not rename or merge accounts. Keep a known-good
+configuration and identity-continuity plan for rollback.
+
+<h2 id='maintain'>6. Pause, restore and troubleshoot</h2>
+
+| Action                         | Effect                                                                                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Disable a connection           | Pauses new sign-in starts through it; published SSO requirements remain. Existing application sessions are not revoked.            |
+| Re-enable / enable and publish | Resumes the connection, including its other existing uses. Confirm route moves separately.                                         |
+| Withdraw a match               | Removes that published requirement. Normal login or another provider may become available, depending on the application.           |
+| Delete a connection            | Requires its published routes to be moved or withdrawn first. Tenant membership is not automatically removed from federation apps. |
+
+Use **disable**, not withdrawal, for a temporary pause. A known-unavailable target
+is different from no published requirement. Password enforcement and session
+revocation belong to the consuming application; publication does not delete credentials.
+
+If publishing is unavailable, check app membership, Product and the app's routing mode.
+Unsaved provider edits also block enabling and publishing to a disabled target.
+If a move partly succeeds, read the result before retrying.
+If a deleted connection leaves a tenant entry, keep it while another connection
+needs it; remove unused non-primary membership deliberately.
+
+Updating an OIDC provider secret and saving affects new logins immediately. There
+is no isolated candidate-secret mode here. The same Tenant/Product/upstream client
+ID identifies the same connection, not a safe copy. Coordinate overlap and rollback
+with the IdP administrator and test before retiring the old credential.

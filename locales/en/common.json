@@ -1,4 +1,9 @@
 {
+  "guides_description": "Short walkthroughs for configuring, testing and operating enterprise sign-in.",
+  "guide_sso_title": "Set up enterprise SSO",
+  "guide_sso_description": "Prepare a customer connection, test a single account, publish login domains and understand pause or rollback.",
+  "guide_get_started": "Getting started",
+  "guide_print": "Print / save PDF",
   "apps": "Apps",
   "documentation": "Documentation",
   "back": "Back",
