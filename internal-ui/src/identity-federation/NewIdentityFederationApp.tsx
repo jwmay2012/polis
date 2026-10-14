@@ -22,6 +22,7 @@ type NewIdentityFederationAppType = Pick<
   | 'type'
   | 'redirectUrl'
   | 'publicRedirectUrls'
+  | 'includeConnectionContext'
 >;
 
 export const NewIdentityFederationApp = ({
@@ -52,6 +53,7 @@ export const NewIdentityFederationApp = ({
     tenants: [],
     mappings: [],
     publicRedirectUrls: [],
+    includeConnectionContext: false,
   };
 
   if (excludeFields) {
@@ -65,7 +67,11 @@ export const NewIdentityFederationApp = ({
     onSubmit: async (values) => {
       const rawResponse = await fetch(urls.createApp, {
         method: 'POST',
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          ...values,
+          includeConnectionContext:
+            values.type === 'oidc' ? values.includeConnectionContext === true : undefined,
+        }),
         headers: defaultHeaders,
       });
 
@@ -215,6 +221,21 @@ export const NewIdentityFederationApp = ({
                 fieldName='publicRedirectUrls'
                 handleItemListUpdate={(fieldName, newList) => formik.setFieldValue(fieldName, newList)}
               />
+            </label>
+          )}
+          {connectionIsOIDC && (
+            <label className='form-control w-full'>
+              <span className='label cursor-pointer justify-start gap-3'>
+                <input
+                  type='checkbox'
+                  name='includeConnectionContext'
+                  className='checkbox checkbox-sm'
+                  checked={formik.values.includeConnectionContext === true}
+                  onChange={formik.handleChange}
+                />
+                <span className='label-text'>{t('bui-fs-connection-context')}</span>
+              </span>
+              <span className='text-xs text-gray-500'>{t('bui-fs-connection-context-description')}</span>
             </label>
           )}
           {connectionIsSAML && (

@@ -455,3 +455,31 @@ tap.test('federation logs preserve both independent client modes', async (t) => 
     }
   }
 });
+
+tap.test('connection context uses the authorize-time setting for token and UserInfo', async (t) => {
+  const jose = await import('jose');
+  for (const enabled of [true, false]) {
+    await identityFederationController.app.update({ id: app.id, includeConnectionContext: enabled });
+    const { verifier, challenge } = pkce();
+    const { relayState } = await authorize(publicTenant, mobileRedirect, challenge, true);
+    await identityFederationController.app.update({ id: app.id, includeConnectionContext: !enabled });
+    const { code } = await callback(relayState);
+    const tokens = await redeem({ code, redirect_uri: mobileRedirect, code_verifier: verifier });
+    const claims = jose.decodeJwt(tokens.id_token!);
+    const profile = await oauthController.userInfo(tokens.access_token);
+    if (enabled) {
+      t.match(claims.connection, { tenant: publicTenant, product, protocol: 'oidc' });
+      t.same(profile.connection, claims.connection);
+      t.equal(
+        profile.connection?.id,
+        profile.requested.idp_hint,
+        'metadata identifies the selected customer connection'
+      );
+      t.not(profile.connection?.id, app.clientID, 'metadata is not the downstream federation client');
+    } else {
+      t.notOk('connection' in claims);
+      t.notOk('connection' in profile);
+    }
+  }
+  await identityFederationController.app.update({ id: app.id, includeConnectionContext: false });
+});
