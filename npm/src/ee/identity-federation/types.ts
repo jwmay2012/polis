@@ -26,6 +26,7 @@ export type IdentityFederationApp = {
   mappings?: AttributeMapping[] | null;
   samlAudienceOverride?: string | null;
   includeOidcTokensInAssertion?: boolean; // Include full OIDC tokens in SAML assertion
+  includeConnectionContext?: boolean; // Include selected connection metadata in OIDC tokens and UserInfo
   ttlInMinutes?: number | null;
 };
 

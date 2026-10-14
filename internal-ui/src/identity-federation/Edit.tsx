@@ -15,7 +15,7 @@ import { TenantPicker } from './TenantPicker';
 
 type EditApp = Pick<
   IdentityFederationApp,
-  'name' | 'acsUrl' | 'tenants' | 'redirectUrl' | 'publicRedirectUrls'
+  'name' | 'acsUrl' | 'tenants' | 'redirectUrl' | 'publicRedirectUrls' | 'includeConnectionContext'
 >;
 
 export const Edit = ({
@@ -45,6 +45,7 @@ export const Edit = ({
       tenants: (app.tenants || []).filter((tenant) => tenant !== app.tenant),
       redirectUrl: app.redirectUrl || [],
       publicRedirectUrls: app.publicRedirectUrls || [],
+      ...(connectionIsOIDC ? { includeConnectionContext: app.includeConnectionContext === true } : {}),
     },
     onSubmit: async (values) => {
       const rawResponse = await fetch(urls.patch, {
@@ -223,6 +224,23 @@ export const Edit = ({
                       fieldName='publicRedirectUrls'
                       handleItemListUpdate={(fieldName, newList) => formik.setFieldValue(fieldName, newList)}
                     />
+                  </label>
+                )}
+                {connectionIsOIDC && (
+                  <label className='form-control w-full'>
+                    <span className='label cursor-pointer justify-start gap-3'>
+                      <input
+                        type='checkbox'
+                        name='includeConnectionContext'
+                        className='checkbox checkbox-sm'
+                        checked={formik.values.includeConnectionContext === true}
+                        onChange={formik.handleChange}
+                      />
+                      <span className='label-text'>{t('bui-fs-connection-context')}</span>
+                    </span>
+                    <span className='text-xs text-gray-500'>
+                      {t('bui-fs-connection-context-description')}
+                    </span>
                   </label>
                 )}
                 <TenantPicker

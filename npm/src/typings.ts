@@ -327,6 +327,7 @@ export interface Profile {
   lastName: string;
   roles?: string[];
   groups?: string[];
+  connection?: { id: string; tenant: string; product: string; protocol: 'saml' | 'oidc' };
   requested: Record<string, string>;
   raw: any;
 }

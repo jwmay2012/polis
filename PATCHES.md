@@ -151,7 +151,34 @@ rebase/release branch. Published tags are never moved.
     Tests: `npm/test/sso/{allowed,redirect_validation,public_client}.test.ts`
     and `npm/test/api/portal-sso-defaults.test.ts`.
 
+14. **Optionally include verified connection context for an OIDC federation app.**
+    `includeConnectionContext` defaults absent/off and is edited only on OIDC
+    federation apps. Authorization snapshots the option; the selected connection's
+    ID, tenant, product and upstream protocol travel outside upstream claims into
+    both ID token and UserInfo. There are no credentials or application-specific
+    enrollment rules, no schema migration and no subject or hint changes.
+    The top-level `connection` claim is reserved for OIDC federation, even with
+    the option off: an upstream attribute with that name remains nested in `raw`
+    when flattening is off, and is removed from flattened federation output
+    when flattening is on. This is the one off-mode compatibility
+    exception. Direct clients and downstream SAML remain unchanged. UserInfo also
+    reserves that key for old token records using their server-owned protocol.
+    Already-signed pre-upgrade ID tokens cannot change; consumers must wait for
+    all producer replicas and the old token-validity window before requiring
+    provenance. Enable the option before activating such a consumer.
+    Files: `npm/src/controller/oauth.ts`, federation app types/controller and
+    the local New/Edit app forms. Tests: `npm/test/sso/connection_context.test.ts`,
+    `npm/test/identity-federation/connection_context.test.ts`, the public-client
+    snapshot case and `e2e/ui/connection-admin.spec.ts`.
+
 Invariants the series must keep, and the tests that hold them:
+
+- Connection context is opt-in per OIDC federation app, server-owned and identical
+  in ID token and UserInfo, including mid-flow setting edits. Upstream/legacy
+  attributes cannot substitute for it; ordinary app edits preserve the option.
+  `npm/test/sso/connection_context.test.ts`,
+  `npm/test/identity-federation/connection_context.test.ts`,
+  `npm/test/sso/public_client.test.ts`, `e2e/ui/connection-admin.spec.ts`
 
 - Every OAuth return matches the complete URI registered by that client; federation
   and connection lists are not interchangeable, including for in-flight callbacks.

@@ -80,6 +80,73 @@ test('admin inventory requires an admin session, not an API key', async ({ reque
   }
 });
 
+test('OIDC application connection context is opt-in and survives editing', async ({ page, baseURL }) => {
+  const app = await createApp(page.request, baseURL!, 'app.example.test', product());
+  await page.goto(`/admin/identity-federation/${app.id}/edit`);
+  const option = page.getByRole('checkbox', { name: /^Include connection context/ });
+  const save = page
+    .locator('form')
+    .filter({ has: option })
+    .getByRole('button', { name: 'Save Changes', exact: true });
+  await expect(option).not.toBeChecked();
+  await option.check();
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/admin/identity-federation/${app.id}`) &&
+      response.request().method() === 'PATCH'
+  );
+  await save.click();
+  expect((await saved).ok()).toBe(true);
+  expect((await readApp(page.request, app.id)).includeConnectionContext).toBe(true);
+  await page.reload();
+  await expect(option).toBeChecked();
+  await option.uncheck();
+  const disabled = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/admin/identity-federation/${app.id}`) &&
+      response.request().method() === 'PATCH'
+  );
+  await save.click();
+  expect((await disabled).ok()).toBe(true);
+  expect((await readApp(page.request, app.id)).includeConnectionContext).toBe(false);
+});
+
+test('new apps expose connection context only for OIDC and omit it when switching to SAML', async ({
+  page,
+  baseURL,
+}) => {
+  for (const type of ['oidc', 'saml']) {
+    await page.goto('/admin/identity-federation/new');
+    const option = page.getByRole('checkbox', { name: /^Include connection context/ });
+    await expect(option).toHaveCount(0);
+    await page.getByTestId('sso-type-oidc').click();
+    await expect(option).not.toBeChecked();
+    await option.check();
+    const scope = product();
+    await page.locator('input[name="name"]').fill('Example application');
+    await page.locator('input[name="tenant"]').fill('example-app');
+    await page.locator('input[name="product"]').fill(scope);
+    if (type === 'saml') {
+      await page.locator('input[name="type"][value="saml"]').check();
+      await expect(option).toHaveCount(0);
+      await page.locator('input[name="acsUrl"]').fill(`${baseURL}/fixture/acs`);
+      await page.locator('input[name="entityId"]').fill(`${baseURL}/fixture/${randomUUID()}`);
+    } else {
+      await page.locator('input[type="url"]').first().fill(`${baseURL}/callback`);
+    }
+    const created = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/admin/identity-federation') && response.request().method() === 'POST'
+    );
+    await page.locator('form button[type="submit"]').click();
+    const response = await created;
+    expect(response.status(), await response.text()).toBe(201);
+    const body = response.request().postDataJSON();
+    expect(body.includeConnectionContext).toBe(type === 'oidc' ? true : undefined);
+    expect((await response.json()).data.includeConnectionContext).toBe(type === 'oidc' ? true : undefined);
+  }
+});
+
 test('admin diagnostics retain connection ID, SAML expiry and metadata without enabling direct integration', async ({
   page,
   baseURL,

@@ -674,6 +674,7 @@ export class OAuthController implements IOAuthController {
               clientID: fedApp.clientID,
               clientSecret: fedApp.clientSecret,
               ttlInMinutes: fedApp.ttlInMinutes,
+              includeConnectionContext: fedApp.includeConnectionContext === true,
             }
           : undefined,
       };
@@ -1353,6 +1354,16 @@ export class OAuthController implements IOAuthController {
 
     const codeVal = {
       profile,
+      ...(session?.oidcFederated?.includeConnectionContext === true
+        ? {
+            connection: {
+              id: connection.clientID,
+              tenant: connection.tenant,
+              product: connection.product,
+              protocol: 'idpMetadata' in connection ? 'saml' : 'oidc',
+            },
+          }
+        : {}),
       clientID: connection.clientID,
       clientSecret: connection.clientSecret,
       requested,
@@ -1650,9 +1661,13 @@ export class OAuthController implements IOAuthController {
         codeVal.profile.claims = { ...codeVal.profile.claims, ...codeVal.profile.claims.raw };
         delete codeVal.profile.claims.raw;
       }
+      if (isOIDCFederated) {
+        delete codeVal.profile.claims.connection;
+      }
 
       const tokenVal = {
         ...codeVal.profile,
+        ...(isOIDCFederated && codeVal.connection ? { connection: codeVal.connection } : {}),
         requested: codeVal.requested,
         clientID: codeVal.clientID,
         login_type,
@@ -1677,12 +1692,13 @@ export class OAuthController implements IOAuthController {
           throw new JacksonError(GENERIC_ERR_STRING, 500, 'JWT signing keys are not loaded');
         }
 
-        let claims: Record<string, string> = requestHasNonce ? { nonce: codeVal.requested.nonce } : {};
+        let claims: Record<string, unknown> = requestHasNonce ? { nonce: codeVal.requested.nonce } : {};
         claims = {
           ...claims,
           requested: codeVal.profile.requested,
           ...codeVal.profile.claims,
           id: subject,
+          ...(isOIDCFederated && codeVal.connection ? { connection: codeVal.connection } : {}),
         };
         const signingKey = await loadJWSPrivateKey(jwtSigningKeys.private, jwsAlg!);
         const kid = await computeKid(jwtSigningKeys.public, jwsAlg!);
@@ -1838,6 +1854,12 @@ export class OAuthController implements IOAuthController {
     }
 
     this.opts.logger.info('Polis userinfo served');
-    return { ...rsp.claims, requested: rsp.requested };
+    const profile = { ...rsp.claims, requested: rsp.requested };
+    // The stored protocol also identifies pre-upgrade federation tokens with unsanitized claims.
+    if (rsp.protocol === 'oidc-federation') {
+      delete profile.connection;
+      if (rsp.connection) profile.connection = rsp.connection;
+    }
+    return profile;
   }
 }

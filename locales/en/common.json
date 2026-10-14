@@ -334,6 +334,8 @@
   "bui-sl-expiry-days": "Expiry in days",
   "bui-sl-allowed-redirect-urls-new": "Allowed redirect URLs",
   "bui-fs-public-redirect-urls": "Public Redirect URIs (for mobile apps and SPAs)",
+  "bui-fs-connection-context": "Include connection context",
+  "bui-fs-connection-context-description": "Include the selected connection's ID, tenant, product and protocol in ID tokens and UserInfo. Disabled by default; no credentials are included.",
   "bui-sl-sso-desc": "Create a unique Setup Link to share with your customers so they can set Enterprise SSO connection with your app.",
   "bui-sl-dsync-desc": "Create a unique Setup Link to share with your customers so they can set Directory Sync connection with your app.",
   "bui-sl-dsync-name-placeholder": "Acme Directory",

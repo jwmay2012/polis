@@ -31,6 +31,7 @@ type NewAppParams = Pick<
   | 'publicRedirectUrls'
   | 'samlAudienceOverride'
   | 'includeOidcTokensInAssertion'
+  | 'includeConnectionContext'
   | 'ttlInMinutes'
 > & {
   logoUrl?: string;
@@ -114,6 +115,10 @@ export class App {
    *         includeOidcTokensInAssertion:
    *           type: boolean
    *           description: Include OIDC tokens in the SAML assertion
+   *         includeConnectionContext:
+   *           type: boolean
+   *           default: false
+   *           description: Include selected connection metadata in this OIDC app's ID token and UserInfo
    *         ttlInMinutes:
    *           type: number
    *           description: Time-to-live in minutes for the SAML assertion, does not apply to OIDC flows
@@ -193,9 +198,16 @@ export class App {
     mappings,
     samlAudienceOverride,
     includeOidcTokensInAssertion,
+    includeConnectionContext,
     ttlInMinutes,
   }: NewAppParams) {
     await throwIfInvalidLicense(this.opts.polisLicenseKey);
+
+    if (includeConnectionContext !== undefined) {
+      if (type !== 'oidc' || typeof includeConnectionContext !== 'boolean') {
+        throw new JacksonError('includeConnectionContext must be a boolean on an OIDC app', 400);
+      }
+    }
 
     if (type === 'oidc') {
       if (!tenant || !product || !redirectUrl || !name) {
@@ -270,6 +282,7 @@ export class App {
       mappings: mappings || [],
       samlAudienceOverride: samlAudienceOverride || null,
       includeOidcTokensInAssertion,
+      ...(includeConnectionContext !== undefined ? { includeConnectionContext } : {}),
       ttlInMinutes: ttlInMinutes ?? null,
     };
 
@@ -538,6 +551,13 @@ export class App {
 
     if ('includeOidcTokensInAssertion' in params) {
       toUpdate['includeOidcTokensInAssertion'] = params.includeOidcTokensInAssertion;
+    }
+
+    if ('includeConnectionContext' in params) {
+      if (app.type !== 'oidc' || typeof params.includeConnectionContext !== 'boolean') {
+        throw new JacksonError('includeConnectionContext must be a boolean on an OIDC app', 400);
+      }
+      toUpdate.includeConnectionContext = params.includeConnectionContext;
     }
 
     if ('ttlInMinutes' in params) {
