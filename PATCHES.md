@@ -171,6 +171,15 @@ rebase/release branch. Published tags are never moved.
     `npm/test/identity-federation/connection_context.test.ts`, the public-client
     snapshot case and `e2e/ui/connection-admin.spec.ts`.
 
+15. **Read the complete published routing inventory for an application.**
+    The existing session-protected admin application GET accepts `routing=true`
+    and returns its managed marker and published bindings, including bindings
+    whose connection no longer exists. Application/license checks run first;
+    the existing complete-scan routing reader supplies the records. Ordinary
+    application GETs are unchanged, and the routing response contains no
+    application credentials. No schema migration, public endpoint or routing
+    behavior change. Test: `npm/test/api/app-routing-inventory.test.ts`.
+
 Invariants the series must keep, and the tests that hold them:
 
 - Connection context is opt-in per OIDC federation app, server-owned and identical
