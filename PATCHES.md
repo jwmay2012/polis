@@ -23,6 +23,13 @@ patch on the same reviewed upstream base; older release branches and tags remain
 
 ## The series
 
+The October 21 packaging update pins Node 24.22.1 on Alpine 3.24 by digest for
+both build and runtime stages. It incorporates the runtime's eMudhra trust fix;
+the existing package installation also refreshes the operating-system CA bundle.
+Application code and dependency lockfiles are unchanged by this commit. Keep
+this packaging change isolated and drop it when the upstream base supplies an
+equivalent runtime and trust store.
+
 Each patch is one commit. They apply in this order.
 
 After publishing a release, append small corrections as `fixup!` commits rather
