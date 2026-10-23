@@ -187,6 +187,25 @@ rebase/release branch. Published tags are never moved.
     application credentials. No schema migration, public endpoint or routing
     behavior change. Test: `npm/test/api/app-routing-inventory.test.ts`.
 
+16. **Verify enterprise emails against published routing authority.**
+    Pair verification with the selected email before combining OIDC claims;
+    explicit false, malformed evidence or disagreeing email sources cannot grant
+    verification. After OIDC/SAML validation, the published exact-email/domain
+    owner must be the actual active connection in the federation application.
+    Missing upstream verification can use that configured enterprise authority;
+    drafts, legacy tenant selection and login hints cannot. Signed ID tokens and
+    UserInfo expose the same protected `email_verified` Boolean, including when
+    raw claims are flattened. Existing in-flight records without evidence yield
+    false. No subjects, identities or schema are changed. Files:
+    `npm/src/controller/email-verification.ts`, the profile extraction and token
+    paths, and `npm/test/controller/email-verification.test.ts`.
+17. **Allow patched ESM dependencies in the server build.**
+    Next's documented loose ESM-external mode permits CommonJS database packages
+    to load the patched ESM-only `uuid` dependency on the Docker image's Node 24
+    runtime. Security overrides and lockfiles are unchanged. Verify both the
+    optimized build and standalone startup when updating these dependencies.
+    File: `next.config.js`.
+
 Invariants the series must keep, and the tests that hold them:
 
 - Connection context is opt-in per OIDC federation app, server-owned and identical
@@ -293,6 +312,12 @@ Invariants the series must keep, and the tests that hold them:
   Product/Tenant help is generic, application keys stay read-only and common-field
   edits preserve provider metadata. The creation selector retains circular radios.
   `e2e/ui/scope-fields.spec.ts`
+- Email verification uses the returned email's published owner, not the login
+  hint. Exact-email overrides, inactive connections, application scope and
+  ID-token/UserInfo disagreement remain fail-closed. Raw claims cannot overwrite
+  the broker's email or verification. Public PKCE and confidential redemptions
+  expose identical verification in signed tokens and UserInfo.
+  `npm/test/controller/email-verification.test.ts`
 
 Upstream status: none of the patches is upstream. Patches 1, 4, 5, 6, and 9 are
 generic enough to propose after this release is accepted.

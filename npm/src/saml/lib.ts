@@ -3,6 +3,7 @@ import saml from '@boxyhq/saml20';
 import * as dbutils from '../db/utils';
 import claims from '../saml/claims';
 import * as logContext from '../controller/log-context';
+import { emailVerification } from '../controller/email-verification';
 
 // Validate the SAMLResponse and extract the user profile
 export const extractSAMLResponseAttributes = async (
@@ -44,7 +45,12 @@ export const extractSAMLResponseAttributes = async (
     profile_validated: true,
   });
 
-  return attributes;
+  return {
+    ...attributes,
+    emailVerification: emailVerification(attributes.claims.email, [
+      { ...attributes.claims.raw, email: attributes.claims.email },
+    ]),
+  };
 };
 
 export type ValidateOption = {
