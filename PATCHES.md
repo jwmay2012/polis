@@ -233,6 +233,9 @@ rebase/release branch. Published tags are never moved.
     secret valid while checking other sign-ins; revoke it at the IdP and finish
     when rollback is no longer needed. Providers without overlap can still use
     the ordinary immediate secret edit, after any rotation is cleared.
+    The spare secret has no automatic expiry in Polis; its validity at the IdP
+    is independent. Rollback restores the old default and leaves the replacement
+    pending for the test email. Discard the pending secret to end that trial.
 
     Before an image rollback, select the active secret to retain and discard the
     pending slot or finish the previous slot. Confirm no standby remains. Older

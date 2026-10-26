@@ -163,9 +163,9 @@ const oidc = {
 
         if (oidcClientId && typeof oidcClientId === 'string') {
           const clientID = dbutils.keyDigest(
-            dbutils.keyFromParts(_savedConnection.tenant, _savedConnection.product, oidcClientId)
+            dbutils.keyFromParts(clientInfo.tenant, clientInfo.product, oidcClientId)
           );
-          if (clientID !== _savedConnection.clientID) {
+          if (clientID !== clientInfo?.clientID) {
             throw new JacksonError('Tenant/Product config mismatch with OIDC Provider metadata', 400);
           }
         }
@@ -205,15 +205,32 @@ const oidc = {
             oidcProvider.publicUpstreamRedirectUri = oidcPublicUpstreamRedirectUri;
           }
         }
-        if (
-          oidcProvider.standby &&
-          (oidcProvider.discoveryUrl !== _savedConnection.oidcProvider.discoveryUrl ||
-            !isDeepStrictEqual(oidcProvider.metadata, _savedConnection.oidcProvider.metadata))
-        )
-          throw new JacksonError(
-            'Discard or finish the secret rotation before changing the OIDC provider.',
-            409
-          );
+        if (oidcProvider.standby) {
+          const savedMetadata = _savedConnection.oidcProvider.metadata;
+          const materialMetadata = oidcProvider.metadata ? { ...oidcProvider.metadata } : undefined;
+          if (materialMetadata && savedMetadata) {
+            // The form echoes absent endpoint fields as empty strings. Ignore
+            // only those additions for this guard; preserve normal update semantics.
+            for (const key of [
+              'issuer',
+              'authorization_endpoint',
+              'token_endpoint',
+              'userinfo_endpoint',
+              'jwks_uri',
+            ]) {
+              if (materialMetadata[key] === '' && !Object.prototype.hasOwnProperty.call(savedMetadata, key))
+                delete materialMetadata[key];
+            }
+          }
+          if (
+            oidcProvider.discoveryUrl !== _savedConnection.oidcProvider.discoveryUrl ||
+            !isDeepStrictEqual(materialMetadata, savedMetadata)
+          )
+            throw new JacksonError(
+              'Discard or finish the secret rotation before changing the OIDC provider.',
+              409
+            );
+        }
       }
 
       const record: OIDCSSORecord = {

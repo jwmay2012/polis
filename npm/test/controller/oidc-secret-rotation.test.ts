@@ -98,6 +98,9 @@ tap.test(
     await f.rotation.record(selectOIDCSecret(connection, pilot, true), { email: pilot });
     t.equal((await f.status()).last?.outcome, 'not_exercised');
     t.notOk((await f.status()).validated);
+    await f.rotation.record(selectOIDCSecret(connection, pilot, true), { error: { error: 'invalid_grant' } });
+    t.match((await f.status()).last, { outcome: 'not_exercised', mode: 'public', error: 'invalid_grant' });
+    t.notOk((await f.status()).validated, 'failed public sign-ins never test a secret');
     await f.rotation.record(selected, { email: 'another@example.test' });
     t.equal((await f.status()).last?.outcome, 'different_account');
     await t.rejects(f.change('promote'), conflict);
@@ -221,6 +224,40 @@ tap.test('rotation preserves normal name edits but prevents credential/provider 
   await t.rejects(oidc.create(definition, f.store), conflict);
   await f.update({ oidcPublicUpstreamRedirectUri: 'https://polis.example.test/api/oauth/oidc/mobile' });
   t.ok((await f.get()).oidcProvider.standby);
+});
+
+tap.test('metadata forms can echo absent optional endpoints while a rotation is pending', async (t) => {
+  const f = await fixture(t);
+  const metadata = {
+    issuer: 'https://idp.example.test',
+    authorization_endpoint: 'https://idp.example.test/authorize',
+    token_endpoint: 'https://idp.example.test/token',
+    userinfo_endpoint: 'https://idp.example.test/userinfo',
+  };
+  // Creation requires every endpoint; the existing PATCH path permits this partial metadata.
+  await f.update({ oidcMetadata: metadata });
+  await f.stage();
+  await f.update({
+    name: 'Metadata form edit',
+    oidcDiscoveryUrl: '',
+    oidcMetadata: { ...metadata, jwks_uri: '' },
+  });
+  t.equal((await f.get()).name, 'Metadata form edit');
+  t.equal((await f.get()).oidcProvider.standby?.clientSecret, pendingSecret);
+  await t.rejects(
+    f.update({ oidcMetadata: { token_endpoint: 'https://other.example.test/token' } }),
+    conflict
+  );
+  await t.rejects(
+    f.update({ oidcMetadata: { userinfo_endpoint: '' } }),
+    conflict,
+    'clearing an existing endpoint remains a material change'
+  );
+  await t.rejects(
+    f.update({ oidcMetadata: { token_endpoint_auth_methods_supported: '' } }),
+    conflict,
+    'only the known form endpoint defaults can be ignored'
+  );
 });
 
 tap.test('ordinary edits rebase on a concurrent rotation rather than erasing it', async (t) => {

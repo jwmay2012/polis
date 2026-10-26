@@ -167,7 +167,7 @@ export class OIDCSecretRotationController {
       outcome: 'not_exercised',
     };
     if ('error' in outcome) {
-      result.outcome = 'failed';
+      if (selection.source !== 'public') result.outcome = 'failed';
       const error = outcome.error as any;
       const code = error?.cause?.error ?? error?.error;
       result.error = [

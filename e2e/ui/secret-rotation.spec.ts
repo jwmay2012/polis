@@ -10,7 +10,7 @@ const servers: Server[] = [];
 
 // A real, loopback-only confidential IdP. UI promotion must earn its proof
 // through Polis's token exchange, not by fabricating a status response.
-async function fixture(request: APIRequestContext, origin: string) {
+async function fixture(request: APIRequestContext, origin: string, withMetadata = false) {
   const clientId = randomUUID();
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const jwk = { ...(await exportJWK(publicKey)), kid: 'fixture' };
@@ -121,6 +121,22 @@ async function fixture(request: APIRequestContext, origin: string) {
   });
   expect(response.status(), await response.text()).toBe(201);
   const connection = (await response.json()).data;
+  if (withMetadata) {
+    const updated = await request.patch('/api/admin/connections', {
+      data: {
+        isOIDC: true,
+        clientID: connection.clientID,
+        clientSecret: connection.clientSecret,
+        oidcMetadata: {
+          issuer,
+          authorization_endpoint: `${issuer}/authorize`,
+          token_endpoint: `${issuer}/token`,
+          userinfo_endpoint: `${issuer}/userinfo`,
+        },
+      },
+    });
+    expect(updated.status(), await updated.text()).toBe(204);
+  }
   const endpoint = `/api/admin/connections/${connection.clientID}/secret-rotation`;
   return {
     state,
@@ -249,6 +265,36 @@ test('a proven secret promotes, refreshes the editor, rolls back and finishes wi
     ).toBeVisible();
   }
   expect((await f.status()).standby).toBeNull();
+});
+
+test('an API-updated partial metadata connection remains editable and can test its secret', async ({
+  page,
+  baseURL,
+}) => {
+  const f = await fixture(page.request, baseURL!, true);
+  const path = `/admin/sso-connection/edit/${f.connection.clientID}`;
+  await page.goto(path);
+  const panel = page.getByRole('region', { name: 'Client secret rotation' });
+  await panel.getByLabel('New client secret').fill(replacementSecret);
+  await panel.getByLabel('Test email').fill(pilot);
+  await panel.getByRole('button', { name: 'Save pending secret' }).click();
+  await expect(panel.getByRole('button', { name: 'Discard pending secret' })).toBeVisible();
+  await page.locator('#name').fill('Edited metadata connection');
+  const saved = page.waitForResponse(
+    (response) => response.request().method() === 'PATCH' && response.url().endsWith('/api/admin/connections')
+  );
+  await page
+    .locator('form')
+    .filter({ has: page.locator('#oidcClientSecret') })
+    .getByRole('button', { name: /Save/i })
+    .click();
+  expect((await saved).status()).toBe(204);
+  await page.waitForURL('**/admin/sso-connection');
+  await page.goto(path);
+  await expect(page.locator('#name')).toHaveValue('Edited metadata connection');
+  expect(await f.login(pilot)).toBe(true);
+  await panel.getByRole('button', { name: 'Refresh test result' }).click();
+  await expect(panel.getByRole('button', { name: 'Promote pending secret' })).toBeEnabled();
 });
 
 test('bad candidates affect only the pilot, mismatch cannot prove them, and unsaved forms block rotation', async ({
