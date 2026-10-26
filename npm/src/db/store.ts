@@ -12,6 +12,10 @@ class Store implements ConditionalStore {
     this.ttl = ttl;
   }
 
+  get conditional() {
+    return this.db.conditional === true;
+  }
+
   async get(key: string): Promise<any> {
     return await this.db.get(this.namespace, dbutils.keyDigest(key));
   }

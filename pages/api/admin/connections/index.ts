@@ -7,6 +7,7 @@ import { defaultHandler } from '@lib/api';
 import { ApiError } from '@lib/error';
 import { collectInventory } from '@lib/admin-inventory';
 import { validateDevelopmentModeLimits } from '@lib/development-mode';
+import { connectionResponse, snapshotSecretRevision } from '@lib/oidc-secret-rotation';
 
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   await defaultHandler(req, res, {
@@ -71,7 +72,7 @@ const handleGET = async (req: NextApiRequest, res: NextApiResponse) => {
     res.setHeader('jackson-pagetoken', paginatedConnectionList.pageToken);
   }
 
-  res.json(connections);
+  res.json(connections?.map(connectionResponse));
 };
 
 // Create a new connection
@@ -113,7 +114,12 @@ const handlePATCH = async (req: NextApiRequest, res: NextApiResponse) => {
     res.status(204).end();
   } else {
     // Update OIDC connection
-    await connectionAPIController.updateOIDCConnection(oidcMetadataParse(req.body));
+    await connectionAPIController.updateOIDCConnection(
+      oidcMetadataParse({
+        ...req.body,
+        expectedSecretRevision: snapshotSecretRevision(req.body),
+      })
+    );
     res.status(204).end();
   }
 };

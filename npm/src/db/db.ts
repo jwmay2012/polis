@@ -64,6 +64,10 @@ class DB implements DatabaseDriver {
     this.statsIntervalId = setInterval(async () => this.publishStats(), STATS_INTERVAL);
   }
 
+  get conditional() {
+    return this.db.conditional === true && typeof this.db.putIfMatch === 'function';
+  }
+
   async get(namespace: string, key: string): Promise<unknown> {
     const res = await this.db.get(namespace, key);
 

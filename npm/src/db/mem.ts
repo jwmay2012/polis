@@ -4,6 +4,7 @@ import { DatabaseDriver, DatabaseOption, Index, Encrypted, Records, SortOrder } 
 import * as dbutils from './utils';
 
 class Mem implements DatabaseDriver {
+  readonly conditional = true;
   private options: DatabaseOption;
   private store: any;
   private indexes: any;

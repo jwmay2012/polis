@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import jackson from '@lib/jackson';
+import { snapshotSecretRevision } from '@lib/oidc-secret-rotation';
 import { oidcMetadataParse, strategyChecker } from '@lib/utils';
 import { validateDevelopmentModeLimits } from '@lib/development-mode';
 import { defaultHandler } from '@lib/api';
@@ -146,6 +147,7 @@ const handlePATCH = async (req: NextApiRequest, res: NextApiResponse, setupLink:
           oidcClientSecret,
           oidcDiscoveryUrl,
           oidcMetadata,
+          expectedSecretRevision: snapshotSecretRevision(req.body),
         }
       : undefined),
   };

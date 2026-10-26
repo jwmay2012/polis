@@ -205,8 +205,56 @@ rebase/release branch. Published tags are never moved.
     runtime. Security overrides and lockfiles are unchanged. Verify both the
     optimized build and standalone startup when updating these dependencies.
     File: `next.config.js`.
+18. **Test and promote an OIDC client secret on the existing connection.**
+    The admin can save a pending secret for one exact test email, validate it
+    through a confidential upstream login, then promote, restore, discard or
+    finish the rotation. The active secret stays in its existing field; IDs,
+    routes, subjects and connection context do not change. Public-client PKCE
+    does not exercise a secret and cannot satisfy the promotion gate. Failed
+    trials never retry the code with another secret. Test results expire after
+    30 days, contain no tokens/secrets, and cannot make a successful login fail.
+    This is upstream-login evidence, not proof that the downstream application
+    issued a session or enrolled the user.
+
+    One conditional OIDC writer protects rotation from ordinary create/update
+    races. PostgreSQL and memory support rotation; other drivers keep ordinary
+    CRUD and report rotation unavailable. Form snapshots carry an opaque secret
+    revision, so old admin/setup tabs cannot restore a superseded secret, even
+    after finishing. Same-ID recreation and issuer/discovery changes are refused
+    while a pending/previous secret exists. New standby values are omitted from
+    HTTP responses; rotation actions record the authenticated admin and revisions
+    through the existing logger. No schema migration or UI-package fork.
+
+    Start rotations only after all replicas and connection writers use this
+    release; older writers do not enforce the new concurrency checks.
+    The IdP must support overlapping credentials. Create the second secret there,
+    save it in the connection's rotation panel, sign in with the test email using
+    a confidential client, then refresh the result and promote. Keep the previous
+    secret valid while checking other sign-ins; revoke it at the IdP and finish
+    when rollback is no longer needed. Providers without overlap can still use
+    the ordinary immediate secret edit, after any rotation is cleared.
+
+    Before an image rollback, select the active secret to retain and discard the
+    pending slot or finish the previous slot. Confirm no standby remains. Older
+    images read the active field correctly but do not filter standby responses
+    or enforce revision checks. Preloaded configurations re-create connections
+    at startup, so clear their outstanding rotation before restarting. Keep this
+    feature in one isolated application commit when rebasing.
 
 Invariants the series must keep, and the tests that hold them:
+
+- OIDC create/update/rotation share conditional writes, preserving unrelated
+  edits without accepting stale credential revisions. Promotion requires current,
+  unexpired confidential proof for the selected test account. Recording proof
+  never writes the connection or changes login authorization.
+  `npm/test/controller/oidc-secret-rotation.test.ts`
+- Pending/previous secrets never enter HTTP responses, including opt-in v1 PATCH
+  responses; internal reads remain complete. Admin action attribution comes from
+  the verified session. `npm/test/api/secret-rotation.test.ts`
+- Real confidential exchange proves candidate isolation, promotion, rollback,
+  immediate form refresh and stale admin/setup-tab refusal; wrong-account and
+  public-client success are not proof. `e2e/ui/secret-rotation.spec.ts`,
+  `npm/test/sso/public_client.test.ts`
 
 - Connection context is opt-in per OIDC federation app, server-owned and identical
   in ID token and UserInfo, including mid-flow setting edits. Upstream/legacy

@@ -3,6 +3,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import jackson from '@lib/jackson';
 import { defaultHandler } from '@lib/api';
 import { ApiError } from '@lib/error';
+import { connectionResponse } from '@lib/oidc-secret-rotation';
 
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   await defaultHandler(req, res, {
@@ -24,7 +25,7 @@ const handleGET = async (req: NextApiRequest, res: NextApiResponse) => {
     throw new ApiError('Connection not found', 404);
   }
 
-  res.json(connections);
+  res.json(connections.map(connectionResponse));
 };
 
 export default handler;

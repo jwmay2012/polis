@@ -5,6 +5,7 @@ import type { DelConnectionsQuery } from '@boxyhq/saml-jackson';
 import { validateDevelopmentModeLimits } from '@lib/development-mode';
 import { defaultHandler } from '@lib/api';
 import { normalizeBooleanParam } from '@lib/api/utils';
+import { connectionResponse } from '@lib/oidc-secret-rotation';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   await defaultHandler(req, res, {
@@ -27,7 +28,7 @@ const handleGET = async (req: NextApiRequest, res: NextApiResponse) => {
 
   const connections = await connectionAPIController.getConnections(params);
 
-  return res.json(connections);
+  return res.json(connections.map(connectionResponse));
 };
 
 // Create a new connection
@@ -83,7 +84,7 @@ const handlePATCH = async (req: NextApiRequest, res: NextApiResponse) => {
     const updatedConnection = await connectionAPIController.updateSAMLConnection(body);
 
     if (returnConnection) {
-      return res.json(updatedConnection);
+      return res.json(connectionResponse(updatedConnection));
     }
 
     res.status(204).end();
@@ -96,7 +97,7 @@ const handlePATCH = async (req: NextApiRequest, res: NextApiResponse) => {
     );
 
     if (returnConnection) {
-      return res.json(updatedConnection);
+      return res.json(connectionResponse(updatedConnection));
     }
 
     res.status(204).end();

@@ -11,6 +11,7 @@ import Applications from './Applications';
 import LoginRouting from './LoginRouting';
 import DirectIntegrationSettings from './DirectIntegrationSettings';
 import ConnectionInfo from './ConnectionInfo';
+import SecretRotation from './SecretRotation';
 
 type EditProps = {
   connection: SAMLSSORecord | OIDCSSORecord;
@@ -170,6 +171,14 @@ const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: 
             />
           )}
         </div>
+        {connectionIsOIDC && !setupLinkToken && !isSettingsView && (
+          <SecretRotation
+            key={connection.clientID}
+            connectionID={connection.clientID}
+            dirty={connectionDirty}
+            onSaved={() => setDirectRevision((revision) => revision + 1)}
+          />
+        )}
         {!setupLinkToken && !isSettingsView && (
           <DirectIntegrationSettings
             connection={connection}

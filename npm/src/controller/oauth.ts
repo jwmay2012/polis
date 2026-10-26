@@ -58,6 +58,7 @@ import * as logContext from './log-context';
 import { contextualLogger } from '../logging/context';
 import { extractDomainFromLoginHint } from './domain-utils';
 import { publicProfile, verifiedEnterpriseEmail } from './email-verification';
+import { selectOIDCSecret, type OIDCSecretRotationController } from './oidc-secret-rotation';
 
 const deflateRawAsync = promisify(deflateRaw);
 
@@ -95,6 +96,7 @@ export class OAuthController implements IOAuthController {
   private ssoHandler: SSOHandler;
   private idFedApp: App;
   private routingController?: RoutingController;
+  private oidcSecretRotationController?: OIDCSecretRotationController;
 
   constructor({
     connectionStore,
@@ -105,6 +107,7 @@ export class OAuthController implements IOAuthController {
     opts,
     idFedApp,
     routingController = undefined as RoutingController | undefined,
+    oidcSecretRotationController = undefined as OIDCSecretRotationController | undefined,
   }) {
     this.connectionStore = connectionStore;
     this.sessionStore = sessionStore;
@@ -114,6 +117,7 @@ export class OAuthController implements IOAuthController {
     this.opts = { ...opts, logger: contextualLogger(opts.logger) };
     this.idFedApp = idFedApp;
     this.routingController = routingController;
+    this.oidcSecretRotationController = oidcSecretRotationController;
 
     this.ssoHandler = new SSOHandler({
       connection: connectionStore,
@@ -1215,20 +1219,28 @@ export class OAuthController implements IOAuthController {
     }
 
     // Reconstruct the oidcClient, code exchange for token and user profile happens here
-    const { discoveryUrl, metadata, clientId, clientSecret } = oidcConnection.oidcProvider;
+    const { discoveryUrl, metadata, clientId } = oidcConnection.oidcProvider;
     const { ssoTraces } = this;
     let tokens: AuthorizationCodeGrantResult | undefined = undefined;
 
     // Get public client info from session (set during authorize)
     const sessionIsPublicClient = session.isPublicClient || false;
+    const secretSelection = selectOIDCSecret(
+      oidcConnection,
+      session.requested?.login_hint,
+      sessionIsPublicClient
+    );
     const sessionUpstreamRedirectUri =
       session.upstreamRedirectUri || this.opts.externalUrl + this.opts.oidcPath;
+    let upstreamValidated = false;
 
     try {
       const client = (await dynamicImport('openid-client')) as typeof import('openid-client');
       logContext.bindContext({
         upstream_redirect_uri: sessionUpstreamRedirectUri,
         upstream_client_auth: sessionIsPublicClient ? 'pkce' : 'client_secret_and_pkce',
+        upstream_credential_source: secretSelection.source,
+        oidc_secret_revision: secretSelection.revision,
         redirect_allowed: true,
       });
       const oidcConfig = await oidcClientConfig({
@@ -1236,7 +1248,7 @@ export class OAuthController implements IOAuthController {
         metadata,
         clientId,
         // For public clients (mobile/SPA), don't send client_secret - rely on PKCE
-        clientSecret: sessionIsPublicClient ? undefined : clientSecret,
+        clientSecret: secretSelection.clientSecret,
         ssoTraces: {
           instance: ssoTraces,
           context: {
@@ -1264,6 +1276,8 @@ export class OAuthController implements IOAuthController {
         idTokenExpected: true,
       });
       profile = await extractOIDCUserProfile(tokens!, oidcConfig, session.includeOidcTokensInAssertion);
+      upstreamValidated = true;
+      await this.oidcSecretRotationController?.record(secretSelection, { email: profile.claims.email });
       logContext.bindProfile(profile.claims);
       this.opts.logger.info('Polis OIDC identity validated');
 
@@ -1287,6 +1301,8 @@ export class OAuthController implements IOAuthController {
 
       return { redirect_url: redirect.success(redirect_uri!, params) };
     } catch (err: any) {
+      if (!upstreamValidated)
+        await this.oidcSecretRotationController?.record(secretSelection, { error: err });
       metrics.increment(protocol === 'oidc' ? 'oauthResponseError' : 'idfedResponseError', {
         protocol,
         login_type,

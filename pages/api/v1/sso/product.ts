@@ -2,6 +2,7 @@ import { defaultHandler } from '@lib/api';
 import jackson from '@lib/jackson';
 import { parsePaginateApiParams } from '@lib/utils';
 import { NextApiRequest, NextApiResponse } from 'next';
+import { connectionResponse } from '@lib/oidc-secret-rotation';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   await defaultHandler(req, res, {
@@ -26,5 +27,5 @@ const handleGET = async (req: NextApiRequest, res: NextApiResponse) => {
     pageToken,
   });
 
-  return res.status(200).json(connections.data);
+  return res.status(200).json(connections.data.map(connectionResponse));
 };

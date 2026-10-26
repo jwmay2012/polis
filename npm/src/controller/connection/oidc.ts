@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { isDeepStrictEqual } from 'util';
 import {
   IConnectionAPIController,
   OIDCSSOConnectionWithDiscoveryUrl,
@@ -11,13 +12,13 @@ import * as dbutils from '../../db/utils';
 import {
   extractHostName,
   extractRedirectUrls,
-  IndexNames,
   validateSSOConnection,
   validateRedirectUrl,
   validateTenantAndProduct,
   validateSortOrder,
 } from '../utils';
 import { JacksonError } from '../error';
+import { writeOIDCRecord } from './oidc-write';
 
 const oidc = {
   create: async (
@@ -40,8 +41,6 @@ const oidc = {
       oidcClientSecret = '',
       oidcPublicUpstreamRedirectUri,
     } = body;
-
-    let connectionClientSecret: string;
 
     const redirectUrlList = extractRedirectUrls(redirectUrl);
 
@@ -90,32 +89,18 @@ const oidc = {
     // Use the clientId from the OpenID Provider to generate the clientID hash for the connection
     record.clientID = dbutils.keyDigest(dbutils.keyFromParts(tenant, product, oidcClientId));
 
-    const exists = await connectionStore.get(record.clientID);
-
-    if (exists) {
-      connectionClientSecret = exists.clientSecret;
-    } else {
-      connectionClientSecret = crypto.randomBytes(24).toString('hex');
-    }
-
-    record.clientSecret = connectionClientSecret;
-
-    await connectionStore.put(
-      record.clientID,
-      record,
-      {
-        // secondary index on tenant + product
-        name: IndexNames.TenantProduct,
-        value: dbutils.keyFromParts(tenant, product),
-      },
-      {
-        // secondary index on product
-        name: IndexNames.Product,
-        value: product,
-      }
-    );
-
-    return record as OIDCSSORecord;
+    return writeOIDCRecord(connectionStore, record.clientID, (exists) => {
+      if (exists?.oidcProvider?.standby)
+        throw new JacksonError(
+          'Discard or finish the secret rotation before replacing this connection.',
+          409
+        );
+      return {
+        ...record,
+        clientSecret: exists?.clientSecret ?? crypto.randomBytes(24).toString('hex'),
+        oidcProvider: { ...record.oidcProvider, secretRevision: crypto.randomUUID() },
+      } as OIDCSSORecord;
+    });
   },
 
   update: async (
@@ -134,6 +119,7 @@ const oidc = {
       oidcClientId,
       oidcClientSecret,
       oidcPublicUpstreamRedirectUri,
+      expectedSecretRevision,
       ...clientInfo
     } = body;
 
@@ -155,89 +141,101 @@ const oidc = {
     const redirectUrlList = redirectUrl ? extractRedirectUrls(redirectUrl) : null;
     validateRedirectUrl({ defaultRedirectUrl, redirectUrlList });
 
-    const _savedConnection = (await connectionsGetter(clientInfo))[0] as OIDCSSORecord;
+    // Preserve the existing tenant/product selection, then retry only this ID.
+    const selected = (await connectionsGetter(clientInfo))[0] as OIDCSSORecord;
+    if (!selected) throw new JacksonError('OIDC connection not found.', 404);
 
-    if (_savedConnection.clientSecret !== clientInfo?.clientSecret) {
-      throw new JacksonError('clientSecret mismatch', 400);
-    }
+    return writeOIDCRecord(connectionStore, selected.clientID, (_savedConnection) => {
+      if (!_savedConnection?.oidcProvider) throw new JacksonError('OIDC connection not found.', 404);
 
-    let oidcProvider;
-    if (_savedConnection && typeof _savedConnection.oidcProvider === 'object') {
-      oidcProvider = { ..._savedConnection.oidcProvider };
+      if (_savedConnection.clientSecret !== clientInfo?.clientSecret) {
+        throw new JacksonError('clientSecret mismatch', 400);
+      }
+      if (
+        expectedSecretRevision !== undefined &&
+        expectedSecretRevision !== (_savedConnection.oidcProvider.secretRevision ?? null)
+      )
+        throw new JacksonError('The client secret changed since this form was loaded. Reload.', 409);
 
-      if (oidcClientId && typeof oidcClientId === 'string') {
-        const clientID = dbutils.keyDigest(
-          dbutils.keyFromParts(clientInfo.tenant, clientInfo.product, oidcClientId)
-        );
-        if (clientID !== clientInfo?.clientID) {
-          throw new JacksonError('Tenant/Product config mismatch with OIDC Provider metadata', 400);
+      let oidcProvider;
+      if (_savedConnection && typeof _savedConnection.oidcProvider === 'object') {
+        oidcProvider = { ..._savedConnection.oidcProvider };
+
+        if (oidcClientId && typeof oidcClientId === 'string') {
+          const clientID = dbutils.keyDigest(
+            dbutils.keyFromParts(_savedConnection.tenant, _savedConnection.product, oidcClientId)
+          );
+          if (clientID !== _savedConnection.clientID) {
+            throw new JacksonError('Tenant/Product config mismatch with OIDC Provider metadata', 400);
+          }
         }
-      }
 
-      if (oidcClientSecret && typeof oidcClientSecret === 'string') {
-        oidcProvider.clientSecret = oidcClientSecret;
-      }
-
-      if (oidcDiscoveryUrl && typeof oidcDiscoveryUrl === 'string') {
-        oidcProvider.discoveryUrl = oidcDiscoveryUrl;
-        const providerName = extractHostName(oidcDiscoveryUrl);
-        oidcProvider.provider = providerName ? providerName : 'Unknown';
-        // Remove previous metadata if any
-        delete oidcProvider.metadata;
-      } else if (oidcMetadata && typeof oidcMetadata === 'object') {
-        // Perform a merge of new metadata with existing one
-        oidcProvider.metadata = { ...oidcProvider.metadata, ...oidcMetadata };
-        const providerName = extractHostName(oidcMetadata.issuer);
-        oidcProvider.provider = providerName ? providerName : 'Unknown';
-        // Remove previous discoveryUrl if any
-        delete oidcProvider.discoveryUrl;
-      }
-
-      // Update public upstream redirect URI for mobile/SPA clients
-      if (oidcPublicUpstreamRedirectUri !== undefined) {
-        if (oidcPublicUpstreamRedirectUri === '' || oidcPublicUpstreamRedirectUri === null) {
-          // Allow clearing the value
-          delete oidcProvider.publicUpstreamRedirectUri;
-        } else {
-          oidcProvider.publicUpstreamRedirectUri = oidcPublicUpstreamRedirectUri;
+        if (oidcClientSecret && typeof oidcClientSecret === 'string') {
+          if (oidcProvider.standby && oidcClientSecret !== oidcProvider.clientSecret)
+            throw new JacksonError(
+              'Discard or finish the secret rotation before replacing the active secret.',
+              409
+            );
+          if (oidcClientSecret !== oidcProvider.clientSecret)
+            oidcProvider.secretRevision = crypto.randomUUID();
+          oidcProvider.clientSecret = oidcClientSecret;
         }
+
+        if (oidcDiscoveryUrl && typeof oidcDiscoveryUrl === 'string') {
+          oidcProvider.discoveryUrl = oidcDiscoveryUrl;
+          const providerName = extractHostName(oidcDiscoveryUrl);
+          oidcProvider.provider = providerName ? providerName : 'Unknown';
+          // Remove previous metadata if any
+          delete oidcProvider.metadata;
+        } else if (oidcMetadata && typeof oidcMetadata === 'object') {
+          // Perform a merge of new metadata with existing one
+          oidcProvider.metadata = { ...oidcProvider.metadata, ...oidcMetadata };
+          const providerName = extractHostName(oidcMetadata.issuer);
+          oidcProvider.provider = providerName ? providerName : 'Unknown';
+          // Remove previous discoveryUrl if any
+          delete oidcProvider.discoveryUrl;
+        }
+
+        // Update public upstream redirect URI for mobile/SPA clients
+        if (oidcPublicUpstreamRedirectUri !== undefined) {
+          if (oidcPublicUpstreamRedirectUri === '' || oidcPublicUpstreamRedirectUri === null) {
+            // Allow clearing the value
+            delete oidcProvider.publicUpstreamRedirectUri;
+          } else {
+            oidcProvider.publicUpstreamRedirectUri = oidcPublicUpstreamRedirectUri;
+          }
+        }
+        if (
+          oidcProvider.standby &&
+          (oidcProvider.discoveryUrl !== _savedConnection.oidcProvider.discoveryUrl ||
+            !isDeepStrictEqual(oidcProvider.metadata, _savedConnection.oidcProvider.metadata))
+        )
+          throw new JacksonError(
+            'Discard or finish the secret rotation before changing the OIDC provider.',
+            409
+          );
       }
-    }
 
-    const record: OIDCSSORecord = {
-      ..._savedConnection,
-      name: name || name === '' ? name : _savedConnection.name,
-      label: label || label === '' ? label : _savedConnection.label,
-      description: description || description === '' ? description : _savedConnection.description,
-      defaultRedirectUrl: defaultRedirectUrl ? defaultRedirectUrl : _savedConnection.defaultRedirectUrl,
-      redirectUrl: redirectUrlList ? redirectUrlList : _savedConnection.redirectUrl,
-      oidcProvider: oidcProvider ? oidcProvider : _savedConnection.oidcProvider,
-    };
+      const record: OIDCSSORecord = {
+        ..._savedConnection,
+        name: name || name === '' ? name : _savedConnection.name,
+        label: label || label === '' ? label : _savedConnection.label,
+        description: description || description === '' ? description : _savedConnection.description,
+        defaultRedirectUrl: defaultRedirectUrl ? defaultRedirectUrl : _savedConnection.defaultRedirectUrl,
+        redirectUrl: redirectUrlList ? redirectUrlList : _savedConnection.redirectUrl,
+        oidcProvider: oidcProvider ? oidcProvider : _savedConnection.oidcProvider,
+      };
 
-    if ('sortOrder' in body) {
-      record.sortOrder = parseInt(body.sortOrder as any);
-    }
-
-    if ('deactivated' in body) {
-      record['deactivated'] = body.deactivated;
-    }
-
-    await connectionStore.put(
-      clientInfo?.clientID || _savedConnection.clientID,
-      record,
-      {
-        // secondary index on tenant + product
-        name: IndexNames.TenantProduct,
-        value: dbutils.keyFromParts(_savedConnection.tenant, _savedConnection.product),
-      },
-      {
-        // secondary index on product
-        name: IndexNames.Product,
-        value: _savedConnection.product,
+      if ('sortOrder' in body) {
+        record.sortOrder = parseInt(body.sortOrder as any);
       }
-    );
 
-    return record;
+      if ('deactivated' in body) {
+        record['deactivated'] = body.deactivated;
+      }
+
+      return record;
+    });
   },
 };
 
