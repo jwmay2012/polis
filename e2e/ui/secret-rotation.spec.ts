@@ -214,24 +214,72 @@ test('a proven secret promotes, refreshes the editor, rolls back and finishes wi
   await expect(setup.locator('#oidcClientSecret')).toHaveValue(activeSecret);
   await expect(setup.getByRole('region', { name: 'Client secret rotation' })).toHaveCount(0);
   const panel = page.getByRole('region', { name: 'Client secret rotation' });
+  await expect(panel.locator('details')).not.toHaveAttribute('open');
+  const screenshotFields = async (name: string) => {
+    const start = (await page.locator('#oidcClientSecret').locator('..').boundingBox())!;
+    const end = (await page.locator('#oidcDiscoveryUrl').locator('..').boundingBox())!;
+    await page.screenshot({
+      path: info.outputPath(name),
+      fullPage: true,
+      clip: {
+        x: start.x - 4,
+        y: start.y + (await page.evaluate(() => window.scrollY)) - 4,
+        width: start.width + 8,
+        height: end.y + end.height - start.y + 8,
+      },
+    });
+  };
+  await screenshotFields('rotation-idle.png');
+  await panel.locator('summary').click();
+  expect(
+    await panel.evaluate((element) => {
+      const secret = document.querySelector('#oidcClientSecret')!;
+      const discovery = document.querySelector('#oidcDiscoveryUrl')!;
+      return (
+        !!(secret.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+        !!(element.compareDocumentPosition(discovery) & Node.DOCUMENT_POSITION_FOLLOWING)
+      );
+    })
+  ).toBe(true);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await panel.getByLabel('New client secret').fill(replacementSecret);
+  await panel.getByRole('button', { name: 'Show secret', exact: true }).click();
+  await expect(panel.getByLabel('New client secret')).toHaveAttribute('type', 'text');
+  await panel.getByRole('button', { name: 'Copy', exact: true }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(replacementSecret);
+  await panel.getByRole('button', { name: 'Hide secret', exact: true }).click();
+  await expect(panel.getByLabel('New client secret')).toHaveAttribute('type', 'password');
   await panel.getByLabel('Test email').fill(pilot);
-  await panel.getByRole('button', { name: 'Save pending secret' }).click();
+  // Enter belongs to the separate rotation form, never the vendor connection PATCH.
+  const providerWrites: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'PATCH') providerWrites.push(request.url());
+  });
+  await panel.getByLabel('Test email').press('Enter');
   await expect(panel.getByRole('button', { name: 'Promote pending secret' })).toBeDisabled();
+  await expect(panel.getByLabel('New client secret')).toHaveValue(replacementSecret);
+  await expect(panel.getByRole('button', { name: 'Save pending secret' })).toBeDisabled();
+  expect(providerWrites).toEqual([]);
   const pending = await f.status();
-  expect(JSON.stringify(pending)).not.toContain(replacementSecret);
+  expect(pending.standby.clientSecret).toBe(replacementSecret);
+  await page.reload();
+  await expect(panel.locator('details')).toHaveAttribute('open');
+  await expect(panel.getByLabel('New client secret')).toHaveValue(replacementSecret);
+  await expect(page.locator('#oidcClientSecret')).toHaveValue(activeSecret);
   expect(await f.login('other@example.test')).toBe(true);
   expect(f.state.exchanges.at(-1)).toBe(activeSecret);
   expect(await f.login(pilot)).toBe(true);
   expect(f.state.exchanges.at(-1)).toBe(replacementSecret);
   await panel.getByRole('button', { name: 'Refresh test result' }).click();
   await expect(panel.getByRole('button', { name: 'Promote pending secret' })).toBeEnabled();
-  await panel.screenshot({ path: info.outputPath('rotation-tested.png') });
+  await screenshotFields('rotation-tested.png');
   await panel.getByRole('button', { name: 'Promote pending secret' }).click();
   await panel.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.locator('#oidcClientSecret')).toHaveValue(replacementSecret);
   await expect(panel.getByRole('button', { name: 'Finish rotation' })).toBeVisible();
-  await panel.screenshot({ path: info.outputPath('rotation-promoted.png') });
+  await expect(panel.getByLabel('Previous client secret')).toHaveValue(activeSecret);
+  await expect(panel.getByLabel('Previous client secret')).toHaveAttribute('readonly');
+  await screenshotFields('rotation-promoted.png');
   await panel.getByRole('button', { name: 'Restore previous secret' }).click();
   await panel.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.locator('#oidcClientSecret')).toHaveValue(activeSecret);
@@ -247,7 +295,8 @@ test('a proven secret promotes, refreshes the editor, rolls back and finishes wi
   expect(f.state.exchanges.at(-1)).toBe(replacementSecret);
   await panel.getByRole('button', { name: 'Finish rotation' }).click();
   await panel.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
-  await expect(panel.getByRole('button', { name: 'Save pending secret' })).toBeVisible();
+  await expect(panel.locator('details')).not.toHaveAttribute('open');
+  await expect(panel.getByLabel('New client secret')).toHaveValue('');
   for (const oldPage of [stale, setup]) {
     const saved = oldPage.waitForResponse(
       (response) =>
@@ -257,7 +306,7 @@ test('a proven secret promotes, refreshes the editor, rolls back and finishes wi
     await oldPage
       .locator('form')
       .filter({ has: oldPage.locator('#oidcClientSecret') })
-      .getByRole('button', { name: /Save/i })
+      .getByRole('button', { name: 'Save', exact: true })
       .click();
     expect((await saved).status()).toBe(409);
     await expect(
@@ -275,6 +324,7 @@ test('an API-updated partial metadata connection remains editable and can test i
   const path = `/admin/sso-connection/edit/${f.connection.clientID}`;
   await page.goto(path);
   const panel = page.getByRole('region', { name: 'Client secret rotation' });
+  await panel.locator('summary').click();
   await panel.getByLabel('New client secret').fill(replacementSecret);
   await panel.getByLabel('Test email').fill(pilot);
   await panel.getByRole('button', { name: 'Save pending secret' }).click();
@@ -286,7 +336,7 @@ test('an API-updated partial metadata connection remains editable and can test i
   await page
     .locator('form')
     .filter({ has: page.locator('#oidcClientSecret') })
-    .getByRole('button', { name: /Save/i })
+    .getByRole('button', { name: 'Save', exact: true })
     .click();
   expect((await saved).status()).toBe(204);
   await page.waitForURL('**/admin/sso-connection');
@@ -304,11 +354,13 @@ test('bad candidates affect only the pilot, mismatch cannot prove them, and unsa
   const f = await fixture(page.request, baseURL!);
   await page.goto(`/admin/sso-connection/edit/${f.connection.clientID}`);
   const panel = page.getByRole('region', { name: 'Client secret rotation' });
+  await panel.locator('summary').click();
   await panel.getByLabel('New client secret').fill('synthetic-wrong-candidate');
   await panel.getByLabel('Test email').fill(pilot);
   await page.locator('#name').fill('Unsaved edit');
   await expect(panel.getByRole('button', { name: 'Save pending secret' })).toBeDisabled();
   await page.reload();
+  await panel.locator('summary').click();
   await panel.getByLabel('New client secret').fill('synthetic-wrong-candidate');
   await panel.getByLabel('Test email').fill(pilot);
   await panel.getByRole('button', { name: 'Save pending secret' }).click();
@@ -322,6 +374,7 @@ test('bad candidates affect only the pilot, mismatch cannot prove them, and unsa
   await panel.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(panel.getByRole('button', { name: 'Discard pending secret' })).toHaveCount(0);
   expect(await f.login(pilot)).toBe(true);
+  await panel.locator('summary').click();
   await panel.getByLabel('New client secret').fill(replacementSecret);
   await panel.getByLabel('Test email').fill(pilot);
   await panel.getByRole('button', { name: 'Save pending secret' }).click();

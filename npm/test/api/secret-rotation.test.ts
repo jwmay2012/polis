@@ -39,7 +39,11 @@ function routeFixture(t, file: string, token: any = { sub: 'admin-id', email: 'a
     adminController: { getAllConnection: async () => ({ data: [connection] }) },
     setupLinkController: { getByToken: async () => ({ tenant: 'customer', product: 'product' }) },
     oidcSecretRotationController: {
-      status: async () => ({ supported: true, revision: 'current-revision', standby: null }),
+      status: async () => ({
+        supported: true,
+        revision: 'current-revision',
+        standby: connection.oidcProvider.standby,
+      }),
       change: async (...args) => {
         action = args;
         return { supported: true, revision: 'new-revision' };
@@ -143,6 +147,9 @@ tap.test('admin form forwards old, current and absent revision snapshots distinc
 
 tap.test('rotation actions require an admin session and attribute the actor from the token', async (t) => {
   const api = routeFixture(t, 'pages/api/admin/connections/[clientId]/secret-rotation.ts');
+  const read = await api.call();
+  t.equal(read.body.standby.clientSecret, source.oidcProvider.standby.clientSecret);
+  t.equal(read.headers['Cache-Control'], 'no-store');
   const body = { action: 'discard', expectedRevision: 'current-revision', actor: { id: 'forged' } };
   const response = await api.call('POST', body);
   t.same(api.action, [source.clientID, body, { id: 'admin-id', email: 'admin@example.test' }]);

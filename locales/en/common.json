@@ -388,6 +388,11 @@
   "secret_rotation_finish_confirm": "Remove the retained previous secret from Polis? Revoke it at your identity provider when it is no longer needed. One-click rollback will no longer be available.",
   "secret_rotation_previous": "The replacement secret is active. The previous secret is retained for rollback while it remains valid at your identity provider. Finish rotation when you no longer need it.",
   "secret_rotation_new_secret": "New client secret",
+  "secret_rotation_previous_secret": "Previous client secret",
+  "secret_rotation_show": "Show secret",
+  "secret_rotation_hide": "Hide secret",
+  "secret_rotation_trial": "Trial active",
+  "secret_rotation_retained": "Previous secret retained",
   "secret_rotation_test_email": "Test email",
   "secret_rotation_stage": "Save pending secret",
   "secret_rotation_confirm": "Confirm"

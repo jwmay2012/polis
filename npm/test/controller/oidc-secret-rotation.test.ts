@@ -87,6 +87,7 @@ tap.test(
   async (t) => {
     const f = await fixture(t);
     await f.stage();
+    t.equal((await f.status()).standby?.clientSecret, pendingSecret, 'admin status retains the saved value');
     const connection = await f.get();
     const selected = selectOIDCSecret(connection, pilot, false);
     t.equal(selected.clientSecret, pendingSecret);
@@ -108,7 +109,7 @@ tap.test(
       error: { error: 'invalid_client', error_description: pendingSecret },
     });
     t.equal((await f.status()).last?.error, 'invalid_client');
-    t.notMatch(JSON.stringify(await f.status()), pendingSecret);
+    t.notMatch(JSON.stringify((await f.status()).last), pendingSecret);
     await f.rotation.record(selected, { error: { error: pendingSecret } });
     t.equal((await f.status()).last?.error, 'upstream_validation_failed');
     await f.validate();
@@ -126,12 +127,17 @@ tap.test(
     await f.stage();
     await f.validate();
     const before = await f.status();
-    t.notMatch(JSON.stringify(before), pendingSecret);
+    t.notMatch(JSON.stringify({ validated: before.validated, last: before.last }), pendingSecret);
     await f.change('promote');
     let current = await f.get();
     t.equal(current.oidcProvider.clientSecret, pendingSecret);
     t.equal(current.oidcProvider.standby?.clientSecret, activeSecret);
     t.equal(current.oidcProvider.standby?.role, 'previous');
+    t.equal(
+      (await f.status()).standby?.clientSecret,
+      activeSecret,
+      'admin status identifies the retained value'
+    );
     for (const key of ['clientID', 'clientSecret', 'tenant', 'product', 'name'])
       t.equal(current[key], f.original[key], `preserves ${key}`);
     t.equal(current.oidcProvider.clientId, f.original.oidcProvider.clientId);
@@ -349,7 +355,9 @@ tap.test('evidence failures are best effort and log fields do not disclose crede
   await t.resolves(f.validate());
   t.notOk((await f.status()).validated);
   t.match(f.events.at(-1)?.message, /Unable to record/);
-  const safe = JSON.stringify(redact({ connection: await f.get(), upstream_credential_source: 'pending' }));
+  const safe = JSON.stringify(
+    redact({ connection: await f.get(), status: await f.status(), upstream_credential_source: 'pending' })
+  );
   t.notMatch(safe, activeSecret);
   t.notMatch(safe, pendingSecret);
   t.match(safe, '"upstream_credential_source":"pending"');

@@ -17,7 +17,7 @@ export type OIDCSecretRotationStatus = {
   supported: boolean;
   active: boolean;
   revision: string | null;
-  standby: Omit<Standby, 'clientSecret'> | null;
+  standby: Standby | null;
   validated: Result | null;
   last: Result | null;
 };
@@ -78,9 +78,7 @@ export class OIDCSecretRotationController {
       supported: this.connections.conditional === true,
       active: !connection.deactivated,
       revision: secretRevision ?? null,
-      standby: standby
-        ? { revision: standby.revision, role: standby.role, email: standby.email, savedAt: standby.savedAt }
-        : null,
+      standby: standby ? { ...standby } : null,
       validated: freshProof(validated) ? validated : null,
       last,
     };

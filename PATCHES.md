@@ -221,9 +221,17 @@ rebase/release branch. Published tags are never moved.
     CRUD and report rotation unavailable. Form snapshots carry an opaque secret
     revision, so old admin/setup tabs cannot restore a superseded secret, even
     after finishing. Same-ID recreation and issuer/discovery changes are refused
-    while a pending/previous secret exists. New standby values are omitted from
-    HTTP responses; rotation actions record the authenticated admin and revisions
+    while a pending/previous secret exists. Standby values are returned only by
+    the session-authenticated, no-store rotation endpoint, so the admin can show
+    or copy the saved value. Ordinary connection/setup/API responses omit them.
+    Rotation actions record the authenticated admin and revisions
     through the existing logger. No schema migration or UI-package fork.
+
+    The panel is collapsed when idle and opens for an active rotation. A small
+    portal adapter places it after react-ui's `#oidcClientSecret` input container;
+    retain that anchor when upgrading the package. Explicit form ownership keeps
+    its inputs/Enter submission separate from the vendor form. Browser tests cover
+    placement, form remounts, saved-value reload, show/copy and stale form protection.
 
     Start rotations only after all replicas and connection writers use this
     release; older writers do not enforce the new concurrency checks.
