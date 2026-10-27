@@ -37,6 +37,10 @@ class Sql implements DatabaseDriver {
     this.logger = logger;
   }
 
+  get conditional() {
+    return this.options.engine === 'sql' && this.options.type === 'postgres';
+  }
+
   async init({ JacksonStore, JacksonIndex, JacksonTTL }): Promise<Sql> {
     const sqlType = this.options.engine === 'planetscale' ? 'mysql' : this.options.type!;
     // Synchronize by default for non-planetscale engines only if migrations are not set to run

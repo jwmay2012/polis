@@ -25,6 +25,8 @@ import EventController from './event';
 import { ProductController } from './ee/product';
 import { contextualLogger } from './logging/context';
 import { RoutingController } from './controller/routing';
+import { OIDCSecretRotationController, oidcSecretTestTTL } from './controller/oidc-secret-rotation';
+export type { OIDCSecretRotationStatus, OIDCSecretRotationAction } from './controller/oidc-secret-rotation';
 
 const TRACES_TTL_DEFAULT = 7 * 24 * 60 * 60;
 
@@ -93,6 +95,7 @@ export const controllers = async (
   checkLicense: () => Promise<boolean>;
   productController: ProductController;
   routingController: RoutingController;
+  oidcSecretRotationController: OIDCSecretRotationController;
   close: () => Promise<void>;
 }> => {
   opts = defaultOpts(opts);
@@ -109,6 +112,11 @@ export const controllers = async (
   const settingsStore = db.store('portal:settings');
   const productStore = db.store('product:config');
   const tracesStore = db.store('saml:tracer', opts.ssoTraces?.ttl);
+  const oidcSecretRotationController = new OIDCSecretRotationController(
+    connectionStore,
+    db.store('oidc:secret-tests', oidcSecretTestTTL),
+    logger
+  );
   const routingController = new RoutingController(
     db.store('sso:routing'),
     connectionStore,
@@ -153,6 +161,7 @@ export const controllers = async (
     opts,
     idFedApp: identityFederationController.app,
     routingController,
+    oidcSecretRotationController,
   });
 
   const logoutController = new LogoutController({ connectionStore, sessionStore, opts });
@@ -219,6 +228,7 @@ export const controllers = async (
     },
     productController,
     routingController,
+    oidcSecretRotationController,
     close: async () => {
       await db.close();
     },

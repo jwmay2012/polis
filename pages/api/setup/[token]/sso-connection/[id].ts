@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import jackson from '@lib/jackson';
+import { connectionResponse } from '@lib/oidc-secret-rotation';
 
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   const { setupLinkController } = await jackson();
@@ -37,7 +38,7 @@ const handleGET = async (req: NextApiRequest, res: NextApiResponse, setupLink: a
     return res.status(404).json({ error: { message: 'Connection not found.' } });
   }
 
-  const connection = connections[0];
+  const connection = connectionResponse(connections[0]);
 
   if (connection.tenant !== setupLink.tenant || connection.product !== setupLink.product) {
     return res.status(400).json({ error: { message: 'Tenant/Product mismatch' } });

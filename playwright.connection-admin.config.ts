@@ -17,6 +17,7 @@ export default defineConfig({
     'routing-admin.spec.ts',
     'federation-setup.spec.ts',
     'scope-fields.spec.ts',
+    'secret-rotation.spec.ts',
   ],
   workers: 1,
   timeout: 120_000,

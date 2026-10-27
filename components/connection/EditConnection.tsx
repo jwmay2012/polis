@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { errorToast, successToast } from '@components/Toaster';
 import { useTranslation } from 'next-i18next';
 import { LinkBack, ScopeFields } from '@boxyhq/internal-ui';
@@ -11,6 +11,7 @@ import Applications from './Applications';
 import LoginRouting from './LoginRouting';
 import DirectIntegrationSettings from './DirectIntegrationSettings';
 import ConnectionInfo from './ConnectionInfo';
+import SecretRotation from './SecretRotation';
 
 type EditProps = {
   connection: SAMLSSORecord | OIDCSSORecord;
@@ -23,6 +24,7 @@ const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: 
   const { t } = useTranslation('common');
   const [connectionDirty, setConnectionDirty] = useState(false);
   const [directRevision, setDirectRevision] = useState(0);
+  const providerForm = useRef<HTMLDivElement>(null);
 
   const { id: connectionClientId } = router.query;
 
@@ -66,6 +68,7 @@ const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: 
           />
         )}
         <div
+          ref={providerForm}
           className='min-w-[28rem] rounded border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800'
           onChangeCapture={(event) => {
             // The Active toggle has its own confirmation/save outside the provider form.
@@ -170,6 +173,15 @@ const EditConnection = ({ connection, setupLinkToken, isSettingsView = false }: 
             />
           )}
         </div>
+        {connectionIsOIDC && !setupLinkToken && !isSettingsView && (
+          <SecretRotation
+            key={connection.clientID}
+            connectionID={connection.clientID}
+            container={providerForm}
+            dirty={connectionDirty}
+            onSaved={() => setDirectRevision((revision) => revision + 1)}
+          />
+        )}
         {!setupLinkToken && !isSettingsView && (
           <DirectIntegrationSettings
             connection={connection}

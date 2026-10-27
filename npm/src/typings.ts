@@ -96,6 +96,14 @@ export interface OIDCSSORecord extends SSOConnection {
     metadata?: ServerMetadata;
     clientId: string;
     clientSecret: string;
+    secretRevision?: string;
+    standby?: {
+      clientSecret: string;
+      revision: string;
+      role: 'pending' | 'previous';
+      email: string;
+      savedAt: string;
+    };
     publicUpstreamRedirectUri?: string; // Redirect URI for public clients (mobile/SPA), registered in IdP as mobile platform
   };
   deactivated?: boolean;
@@ -145,6 +153,7 @@ export type UpdateOIDCConnectionParams = UpdateConnectionParams & {
   oidcMetadata?: ServerMetadata;
   oidcClientId?: string;
   oidcClientSecret?: string;
+  expectedSecretRevision?: string | null;
   oidcPublicUpstreamRedirectUri?: string; // Redirect URI for public clients (mobile/SPA), registered in IdP as mobile platform
 };
 
@@ -344,6 +353,7 @@ export interface Records<T = any> {
 }
 
 export interface DatabaseDriver {
+  readonly conditional?: boolean;
   getAll(
     namespace: string,
     pageOffset?: number,
@@ -378,6 +388,7 @@ export interface DatabaseDriver {
 }
 
 export interface Storable {
+  readonly conditional?: boolean;
   getAll(
     pageOffset?: number,
     pageLimit?: number,
