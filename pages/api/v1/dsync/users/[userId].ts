@@ -36,7 +36,7 @@ const handleGET = async (req: NextApiRequest, res: NextApiResponse) => {
 
   const { data, error } = await directorySyncController.users
     .setTenantAndProduct(tenant, product)
-    .get(searchParams.userId);
+    .get(searchParams.userId, searchParams.directoryId);
 
   if (error) {
     return res.status(error.code).json({ error });

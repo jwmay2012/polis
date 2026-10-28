@@ -36,7 +36,7 @@ const handleGET = async (req: NextApiRequest, res: NextApiResponse) => {
 
   const { data, error } = await directorySyncController.groups
     .setTenantAndProduct(tenant, product)
-    .get(searchParams.groupId);
+    .get(searchParams.groupId, searchParams.directoryId);
 
   if (error) {
     return res.status(error.code).json({ error });

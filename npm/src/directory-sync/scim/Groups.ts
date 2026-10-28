@@ -21,8 +21,8 @@ interface CreateGroupParams {
 }
 
 export class Groups extends Base {
-  constructor({ db }: { db: DatabaseStore }) {
-    super({ db });
+  constructor({ db, cursor }: { db: DatabaseStore; cursor?: boolean }) {
+    super({ db, cursor });
   }
 
   // Create a new group
@@ -35,12 +35,15 @@ export class Groups extends Base {
 
     const group: Group = {
       id,
+      directoryId,
       name,
       raw,
     };
 
     try {
-      await this.store('groups').put(
+      const store = this.store('groups');
+      if (await store.get(id)) throw new JacksonError('Group already exists.', 409);
+      await store.put(
         id,
         group,
         {
@@ -131,12 +134,19 @@ export class Groups extends Base {
    *               $ref: "#/components/schemas/Group"
    *     x-ory-ratelimit-bucket: polis-public-high
    */
-  public async get(id: string): Promise<Response<Group>> {
+  public async get(id: string, directoryId?: string): Promise<Response<Group>> {
     try {
       const group = await this.store('groups').get(id);
 
       if (!group) {
         throw new JacksonError(`Group with id ${id} not found.`, 404);
+      }
+
+      if (directoryId) {
+        if (!(await this.belongsToDirectory('groups', group, directoryId))) {
+          throw new JacksonError('Group not found.', 404);
+        }
+        group.directoryId = directoryId;
       }
 
       return { data: group, error: null };
@@ -151,17 +161,21 @@ export class Groups extends Base {
     param: {
       name: string;
       raw: any;
+      directoryId?: string;
     }
   ): Promise<Response<Group>> {
     const { name, raw } = param;
 
-    const group: Group = {
-      id,
-      name,
-      raw,
-    };
-
     try {
+      const saved = await this.get(id);
+      if (saved.error || !saved.data) return saved;
+      const group: Group = {
+        ...saved.data,
+        id,
+        name,
+        raw,
+        directoryId: saved.data.directoryId || param.directoryId,
+      };
       await this.store('groups').put(id, group);
 
       return { data: group, error: null };

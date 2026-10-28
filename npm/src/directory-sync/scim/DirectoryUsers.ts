@@ -14,6 +14,7 @@ import { parseUserPatchRequest, extractStandardUserAttributes, updateRawUserAttr
 import { sendEvent } from '../utils';
 import { isConnectionActive } from '../../controller/utils';
 import { randomUUID } from 'crypto';
+import { apiError } from '../../controller/error';
 
 interface DirectoryUsersParams {
   directories: IDirectoryConfig;
@@ -52,7 +53,8 @@ export class DirectoryUsers {
 
     newUser.raw['id'] = newUser.id;
 
-    const { data: user } = await this.users.create(newUser);
+    const { data: user, error } = await this.users.create(newUser);
+    if (error || !user) return this.respondWithError(error);
 
     await sendEvent('user.created', { directory, user }, this.callback);
 
@@ -72,11 +74,13 @@ export class DirectoryUsers {
   public async update(directory: Directory, user: User, body: any): Promise<DirectorySyncResponse> {
     const userAttributes = extractStandardUserAttributes(body);
 
-    const { data: updatedUser } = await this.users.update(user.id, {
+    const { data: updatedUser, error } = await this.users.update(user.id, {
       ...userAttributes,
       id: user.id,
+      directoryId: directory.id,
       raw: 'rawAttributes' in body ? body.rawAttributes : body,
     });
+    if (error || !updatedUser) return this.respondWithError(error);
 
     await sendEvent('user.updated', { directory, user: updatedUser }, this.callback);
 
@@ -107,11 +111,12 @@ export class DirectoryUsers {
       };
     }
 
-    const { data: updatedUser } = await this.users.update(user.id, {
+    const { data: updatedUser, error } = await this.users.update(user.id, {
       ...user,
       ...attributes,
       raw: updateRawUserAttributes(user.raw, rawAttributes),
     });
+    if (error || !updatedUser) return this.respondWithError(error);
 
     await sendEvent('user.updated', { directory, user: updatedUser }, this.callback);
 
@@ -122,7 +127,8 @@ export class DirectoryUsers {
   }
 
   public async delete(directory: Directory, user: User): Promise<DirectorySyncResponse> {
-    await this.users.delete(user.id);
+    const { error } = await this.users.delete(user.id);
+    if (error) return this.respondWithError(error);
 
     await sendEvent('user.deleted', { directory, user }, this.callback);
 
@@ -187,6 +193,18 @@ export class DirectoryUsers {
     request: DirectorySyncRequest,
     callback?: EventCallback
   ): Promise<DirectorySyncResponse> {
+    const scoped: this = Object.assign(Object.create(Object.getPrototypeOf(this)), this);
+    try {
+      return await scoped.handleScopedRequest(request, callback);
+    } catch (error) {
+      return this.respondWithError(apiError(error).error);
+    }
+  }
+
+  private async handleScopedRequest(
+    request: DirectorySyncRequest,
+    callback?: EventCallback
+  ): Promise<DirectorySyncResponse> {
     const { body, query, resourceId: userId, directoryId, apiSecret } = request;
 
     const method = request.method.toUpperCase();
@@ -222,10 +240,12 @@ export class DirectoryUsers {
     }
 
     this.callback = callback;
-    this.users.setTenantAndProduct(directory.tenant, directory.product);
+    this.users = this.users.setTenantAndProduct(directory.tenant, directory.product);
 
     // Get the user
-    const { data: user } = userId ? await this.users.get(userId) : { data: null };
+    const found = userId ? await this.users.get(userId, directory.id) : { data: null, error: null };
+    if (found.error) return this.respondWithError(found.error);
+    const user = found.data;
 
     // Delete password if exists in the body
     if (body && 'password' in body) {

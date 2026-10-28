@@ -27,8 +27,9 @@ const directorySync = async (params: {
 }) => {
   const { db, opts, eventController } = params;
 
-  const users = new Users({ db });
-  const groups = new Groups({ db });
+  const cursor = opts.db !== undefined && 'engine' in opts.db && opts.db.engine === 'dynamodb';
+  const users = new Users({ db, cursor });
+  const groups = new Groups({ db, cursor });
   const webhookLogsTTLSeconds = resolveWebhookLogsTTL(opts.dsync?.webhookLogsTTL, opts.logger);
   const webhookLogs = new WebhookEventsLogger({ db, ttlSeconds: webhookLogsTTLSeconds });
   const directories = new DirectoryConfig({

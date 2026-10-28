@@ -37,14 +37,17 @@ const handleGET = async (req: NextApiRequest, res: NextApiResponse) => {
     product = directory.product;
   }
 
-  const { data, error } = await directorySyncController.groups
-    .setTenantAndProduct(tenant, product)
-    .getGroupMembers({
-      groupId: searchParams.groupId,
-      pageOffset,
-      pageLimit,
-      pageToken,
-    });
+  const groups = directorySyncController.groups.setTenantAndProduct(tenant, product);
+  if (searchParams.directoryId) {
+    const { error } = await groups.get(searchParams.groupId, searchParams.directoryId);
+    if (error) return res.status(error.code).json({ error });
+  }
+  const { data, error } = await groups.getGroupMembers({
+    groupId: searchParams.groupId,
+    pageOffset,
+    pageLimit,
+    pageToken,
+  });
 
   if (error) {
     return res.status(error.code).json({ error });

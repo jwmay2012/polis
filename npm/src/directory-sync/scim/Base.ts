@@ -1,14 +1,17 @@
-import type { Storable, DB } from '../../typings';
+import type { Storable, DB, Index } from '../../typings';
 import { storeNamespacePrefix } from '../../controller/utils';
+import { JacksonError } from '../../controller/error';
 
 export class Base {
   protected db: DB;
   protected tenant: null | string = null;
   protected product: null | string = null;
   protected bulkDeleteBatchSize = 500;
+  protected cursor: boolean;
 
-  constructor({ db }: { db: DB }) {
+  constructor({ db, cursor = false }: { db: DB; cursor?: boolean }) {
     this.db = db;
+    this.cursor = cursor;
   }
 
   // Return the database store
@@ -25,6 +28,53 @@ export class Base {
     this.tenant = tenant;
     this.product = product;
 
-    return this;
+    // Keep statement-style callers working; chained operations retain their
+    // own scope while another request changes the shared controller.
+    return Object.assign(Object.create(Object.getPrototypeOf(this)), this);
+  }
+
+  protected async *indexRecords(store: Storable, index: Index): AsyncGenerator<any> {
+    let offset = 0;
+    let token: string | undefined;
+    let cursor = this.cursor;
+    const seen = new Set<string>();
+    for (let page = 0; page < 1000; page++) {
+      const result = await store.getByIndex({ ...index }, offset, 100, token);
+      if (result.pageToken) cursor = true;
+      if (cursor) {
+        if (result.pageToken && seen.has(result.pageToken)) break;
+        if (result.pageToken) seen.add(result.pageToken);
+      } else if (result.data.length) {
+        const first = String(result.data[0].id);
+        if (seen.has(first)) break;
+        seen.add(first);
+      }
+      yield* result.data;
+      if (cursor) {
+        if (!result.pageToken) return;
+        token = result.pageToken;
+      } else {
+        if (!result.data.length) return;
+        offset += result.data.length;
+      }
+    }
+    throw new JacksonError('Could not read the complete directory index.', 503);
+  }
+
+  protected async belongsToDirectory(
+    type: 'users' | 'groups',
+    record: { id: string; directoryId?: string },
+    directoryId: string
+  ): Promise<boolean> {
+    if (record.directoryId) return record.directoryId === directoryId;
+    // Older group records and user PUTs omitted directoryId. The original
+    // directory index still establishes ownership; the next write retains it.
+    for await (const entry of this.indexRecords(this.store(type), {
+      name: 'directoryId',
+      value: directoryId,
+    })) {
+      if (entry.id === record.id) return true;
+    }
+    return false;
   }
 }
