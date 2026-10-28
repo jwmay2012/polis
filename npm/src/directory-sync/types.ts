@@ -113,6 +113,7 @@ export interface WebhookEventLog {
 
 export type User = {
   id: string;
+  directoryId?: string;
   email: string;
   first_name: string;
   last_name: string;
@@ -123,6 +124,7 @@ export type User = {
 
 export type Group = {
   id: string;
+  directoryId?: string;
   name: string;
   raw?: any;
 };

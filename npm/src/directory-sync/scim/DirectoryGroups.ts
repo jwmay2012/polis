@@ -10,12 +10,14 @@ import type {
   IDirectoryConfig,
   IUsers,
   IGroups,
+  User,
   GroupPatchOperation,
   JacksonOption,
 } from '../../typings';
 import { parseGroupOperation } from './utils';
 import { sendEvent } from '../utils';
 import { isConnectionActive } from '../../controller/utils';
+import { apiError, JacksonError } from '../../controller/error';
 
 interface DirectoryGroupsParams {
   directories: IDirectoryConfig;
@@ -59,12 +61,13 @@ export class DirectoryGroups {
       return this.respondWithError({ code: 409, message: 'Group already exists' });
     }
 
-    const { data: group } = await this.groups.create({
+    const { data: group, error } = await this.groups.create({
       directoryId: directory.id,
       name: displayName,
       id: groupId,
       raw: 'rawAttributes' in body ? body.rawAttributes : { ...body, members: [] },
     });
+    if (error || !group) return this.respondWithError(error);
 
     await sendEvent('group.created', { directory, group }, this.callback);
 
@@ -167,6 +170,16 @@ export class DirectoryGroups {
   public async patch(directory: Directory, group: Group, body: any): Promise<DirectorySyncResponse> {
     const { Operations } = body as { Operations: GroupPatchOperation[] };
 
+    // Reject a foreign member before applying any part of this request.
+    for (const op of Operations) {
+      const operation = parseGroupOperation(op);
+      if (operation?.action === 'addGroupMember' || operation?.action === 'removeGroupMember') {
+        for (const member of operation.members || []) {
+          await this.directoryMember(directory, member.value, operation.action === 'removeGroupMember');
+        }
+      }
+    }
+
     for (const op of Operations) {
       const operation = parseGroupOperation(op);
 
@@ -216,7 +229,8 @@ export class DirectoryGroups {
   }
 
   public async delete(directory: Directory, group: Group): Promise<DirectorySyncResponse> {
-    await this.groups.delete(group.id);
+    const { error } = await this.groups.delete(group.id);
+    if (error) return this.respondWithError(error);
 
     await sendEvent('group.deleted', { directory, group }, this.callback);
 
@@ -230,6 +244,7 @@ export class DirectoryGroups {
   public async updateDisplayName(directory: Directory, group: Group, body: any): Promise<Group> {
     const { data: updatedGroup, error } = await this.groups.update(group.id, {
       name: body.displayName,
+      directoryId: directory.id,
       raw: 'rawAttributes' in body ? body.rawAttributes : { ...group.raw, ...body },
     });
 
@@ -339,11 +354,10 @@ export class DirectoryGroups {
     }
 
     for (const member of members) {
+      const user = await this.directoryMember(directory, member.value);
       if (!(await this.groups.isUserInGroup(group.id, member.value))) {
         await this.groups.addUserToGroup(group.id, member.value);
       }
-
-      const { data: user } = await this.users.get(member.value);
 
       await sendEvent('group.user_added', { directory, group, user }, this.callback);
     }
@@ -359,15 +373,29 @@ export class DirectoryGroups {
     }
 
     for (const member of members) {
+      const user = await this.directoryMember(directory, member.value, true);
       await this.groups.removeUserFromGroup(group.id, member.value);
-
-      const { data: user } = await this.users.get(member.value);
 
       // User may not exist in the directory, so we need to check if the user exists
       if (user) {
         await sendEvent('group.user_removed', { directory, group, user }, this.callback);
       }
     }
+  }
+
+  private async directoryMember(
+    directory: Directory,
+    id: string,
+    allowMissing = false
+  ): Promise<User | null> {
+    const result = await this.users.get(id, directory.id);
+    if (result.data) return result.data;
+    if (allowMissing && result.error?.code === 404) {
+      const unscoped = await this.users.get(id);
+      if (unscoped.error?.code === 404) return null;
+      if (unscoped.error) throw new JacksonError(unscoped.error.message, unscoped.error.code);
+    }
+    throw new JacksonError(result.error?.message || 'User not found.', result.error?.code || 404);
   }
 
   private respondWithError(error: ApiError | null) {
@@ -382,6 +410,18 @@ export class DirectoryGroups {
 
   // Handle the request from the Identity Provider and route it to the appropriate method
   public async handleRequest(
+    request: DirectorySyncRequest,
+    callback?: EventCallback
+  ): Promise<DirectorySyncResponse> {
+    const scoped: this = Object.assign(Object.create(Object.getPrototypeOf(this)), this);
+    try {
+      return await scoped.handleScopedRequest(request, callback);
+    } catch (error) {
+      return this.respondWithError(apiError(error).error);
+    }
+  }
+
+  private async handleScopedRequest(
     request: DirectorySyncRequest,
     callback?: EventCallback
   ): Promise<DirectorySyncResponse> {
@@ -421,11 +461,13 @@ export class DirectoryGroups {
 
     this.callback = callback;
 
-    this.users.setTenantAndProduct(directory.tenant, directory.product);
-    this.groups.setTenantAndProduct(directory.tenant, directory.product);
+    this.users = this.users.setTenantAndProduct(directory.tenant, directory.product);
+    this.groups = this.groups.setTenantAndProduct(directory.tenant, directory.product);
 
     // Get the group
-    const { data: group } = groupId ? await this.groups.get(groupId) : { data: null };
+    const found = groupId ? await this.groups.get(groupId, directory.id) : { data: null, error: null };
+    if (found.error) return this.respondWithError(found.error);
+    const group = found.data;
 
     if (groupId && !group) {
       return this.respondWithError({ code: 404, message: 'Group not found' });

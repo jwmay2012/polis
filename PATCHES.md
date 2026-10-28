@@ -252,7 +252,30 @@ rebase/release branch. Published tags are never moved.
     at startup, so clear their outstanding rotation before restarting. Keep this
     feature in one isolated application commit when rebasing.
 
+19. **Isolate Directory Sync requests and enforce directory ownership.**
+    A chained `setTenantAndProduct()` returns a scoped controller copy while
+    preserving the existing mutation for statement-style callers. SCIM handlers
+    also keep callbacks and controllers local to one request. User/group writes
+    retain their directory ID; resource reads and member operations check it.
+    Existing records without that field are checked against the original
+    directory index and repaired by their next update. Legacy index scans follow
+    the store's pagination, use fresh index objects, and refuse incomplete scans
+    after a repeated page/cursor or 1,000 pages. Supplied resource IDs cannot
+    overwrite an existing record. No schema migration or application-specific
+    provisioning policy is included.
+
+    `npm/test/dsync/request-isolation.test.ts` covers an awaited lookup and
+    concurrent deletion, directory/member access, legacy records and pagination.
+    Its optional `DSYNC_TEST_DATABASE_URL` runs against a disposable loopback
+    PostgreSQL database with encryption; otherwise it uses the memory driver.
+
 Invariants the series must keep, and the tests that hold them:
+
+- Directory Sync operations keep their requesting tenant, directory and callback
+  across awaits. User/group IDs and memberships cannot cross directory boundaries,
+  including two directories for one tenant/product. Existing statement-style
+  controller calls and older stored records remain usable.
+  `npm/test/dsync/request-isolation.test.ts`
 
 - OIDC create/update/rotation share conditional writes, preserving unrelated
   edits without accepting stale credential revisions. Promotion requires current,

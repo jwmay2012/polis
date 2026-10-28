@@ -5,8 +5,8 @@ import { keyFromParts } from '../../db/utils';
 import { indexNames } from './utils';
 
 export class Users extends Base {
-  constructor({ db }: { db: DatabaseStore }) {
-    super({ db });
+  constructor({ db, cursor }: { db: DatabaseStore; cursor?: boolean }) {
+    super({ db, cursor });
   }
 
   // Create a new user
@@ -14,7 +14,9 @@ export class Users extends Base {
     const { directoryId, id, email } = user;
 
     try {
-      await this.store('users').put(
+      const store = this.store('users');
+      if (await store.get(id)) throw new JacksonError('User already exists.', 409);
+      await store.put(
         id,
         user,
         {
@@ -100,12 +102,19 @@ export class Users extends Base {
    *               $ref: "#/components/schemas/User"
    *     x-ory-ratelimit-bucket: polis-public-high
    */
-  public async get(id: string): Promise<Response<User>> {
+  public async get(id: string, directoryId?: string): Promise<Response<User>> {
     try {
       const user = await this.store('users').get(id);
 
       if (user === null) {
         throw new JacksonError('User not found', 404);
+      }
+
+      if (directoryId) {
+        if (!(await this.belongsToDirectory('users', user, directoryId))) {
+          throw new JacksonError('User not found', 404);
+        }
+        user.directoryId = directoryId;
       }
 
       return { data: user, error: null };
@@ -120,12 +129,14 @@ export class Users extends Base {
 
     raw['id'] = id;
 
-    const updatedUser = {
-      ...user,
-      raw,
-    };
-
     try {
+      const saved = await this.get(id);
+      if (saved.error || !saved.data) return saved;
+      const updatedUser = {
+        ...user,
+        directoryId: saved.data.directoryId || user.directoryId,
+        raw,
+      };
       await this.store('users').put(id, updatedUser);
       return { data: updatedUser, error: null };
     } catch (err: any) {
