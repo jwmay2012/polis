@@ -19,8 +19,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     resourceType: path,
     apiSecret: extractAuthToken(req),
     query: {
-      count: query.count ? parseInt(query.count as string) : undefined,
-      startIndex: query.startIndex ? parseInt(query.startIndex as string) : undefined,
+      count: query.count as string | undefined,
+      startIndex: query.startIndex as string | undefined,
       filter: query.filter as string,
       includeMembers: query.includeMembers === 'true',
     },

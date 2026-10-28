@@ -269,7 +269,35 @@ rebase/release branch. Published tags are never moved.
     Its optional `DSYNC_TEST_DATABASE_URL` runs against a disposable loopback
     PostgreSQL database with encryption; otherwise it uses the memory driver.
 
+20. **Use current directory records for SCIM queries.** Equality filters distinguish
+    userName, externalId, email and group displayName; simple `and` expressions
+    are supported and unsupported filters return `invalidFilter`. Paging counts
+    every matching record, independent of the database page limit. Renames cannot
+    leave stale matches or reserve a previous email/group name. Uniqueness checks
+    reject an occupied userName/email or group name before writing. As before,
+    these checks do not serialize simultaneous creates.
+
+    Queries stream the existing directory index rather than requiring new indexes
+    or a reindex of older records. They retain only the requested response page
+    (default100, maximum1,000) plus seen IDs. This is linear in directory size;
+    the existing1,000-page bound returns503 rather than a misleading partial count.
+    `npm/test/dsync/user-queries.test.ts` runs in memory or against the same optional
+    disposable PostgreSQL fixture as patch19. No schema migration.
+
+21. **Log exhausted synchronous Directory Sync webhook delivery.** Final failures
+    include directory/customer scope, event/resource ID, status and attempt count
+    even when webhook payload retention is off. Bodies, headers and signature
+    secrets are excluded. Existing retries and SCIM response behavior are unchanged:
+    the directory write has already happened, and an unchanged upstream sync is
+    not guaranteed to redeliver a failed notification. Operators must diagnose
+    and retry the affected operation. `npm/test/dsync/webhook-delivery.test.ts`.
+
 Invariants the series must keep, and the tests that hold them:
+
+- SCIM filters match the named current attribute, including after a rename;
+  totalResults is complete even when a database page is smaller than the requested
+  response. Invalid filters fail explicitly. A failed duplicate write preserves
+  the original record. `npm/test/dsync/user-queries.test.ts`
 
 - Directory Sync operations keep their requesting tenant, directory and callback
   across awaits. User/group IDs and memberships cannot cross directory boundaries,

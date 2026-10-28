@@ -83,8 +83,8 @@ export interface DirectorySyncRequest {
   resourceId: string | undefined;
   apiSecret: string | null;
   query: {
-    count?: number;
-    startIndex?: number;
+    count?: number | string;
+    startIndex?: number | string;
     filter?: string;
     // When true, group reads include the group's members. Off by default to
     // avoid loading very large memberships inline.

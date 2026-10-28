@@ -12,6 +12,7 @@ import * as dbutils from '../../db/utils';
 import { apiError, JacksonError } from '../../controller/error';
 import { Base } from './Base';
 import { indexNames } from './utils';
+import { equal, equalityFilters, type ListQuery } from './query';
 
 interface CreateGroupParams {
   directoryId: string;
@@ -237,15 +238,36 @@ export class Groups extends Base {
   // Search groups by displayName
   public async search(displayName: string, directoryId: string): Promise<Response<Group[]>> {
     try {
-      const { data: groups } = await this.store('groups').getByIndex({
-        name: indexNames.directoryIdDisplayname,
-        value: dbutils.keyFromParts(directoryId, displayName),
-      });
+      const { data: groups } = await this.directoryPage<Group>(
+        'groups',
+        directoryId,
+        { count: 1000 },
+        (group) => equal(group.name, displayName)
+      );
 
       return { data: groups, error: null };
     } catch (err: any) {
       return apiError(err);
     }
+  }
+
+  public async list(directoryId: string, query: ListQuery) {
+    const filters = equalityFilters(query.filter, ['displayname', 'externalid']);
+    return this.directoryPage<Group>('groups', directoryId, query, (group) =>
+      filters.every(({ attribute, value }) =>
+        attribute === 'displayname' ? equal(group.name, value) : equal(group.raw?.externalId, value, true)
+      )
+    );
+  }
+
+  public async assertUnique(name: string, directoryId: string, except?: string) {
+    const { totalResults } = await this.directoryPage<Group>(
+      'groups',
+      directoryId,
+      { count: 0 },
+      (entry) => entry.id !== except && equal(entry.name, name)
+    );
+    if (totalResults) throw new JacksonError('Group already exists.', 409);
   }
 
   /**

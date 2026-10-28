@@ -10,11 +10,17 @@ import type {
   IUsers,
   UserPatchOperation,
 } from '../../typings';
-import { parseUserPatchRequest, extractStandardUserAttributes, updateRawUserAttributes } from './utils';
+import {
+  parseUserPatchRequest,
+  extractStandardUserAttributes,
+  updateRawUserAttributes,
+  isSCIMEnabledProvider,
+} from './utils';
 import { sendEvent } from '../utils';
 import { isConnectionActive } from '../../controller/utils';
 import { randomUUID } from 'crypto';
-import { apiError } from '../../controller/error';
+import { apiError, JacksonError } from '../../controller/error';
+import type { ListQuery } from './query';
 
 interface DirectoryUsersParams {
   directories: IDirectoryConfig;
@@ -34,17 +40,10 @@ export class DirectoryUsers {
   public async create(directory: Directory, body: any): Promise<DirectorySyncResponse> {
     const userAttributes = extractStandardUserAttributes(body);
 
-    // Check if the user already exists
-    const { data: users } = await this.users.search(userAttributes.email, directory.id);
-
-    if (users && users.length > 0) {
-      return this.respondWithError({ code: 409, message: 'User already exists' });
-    }
-
     const newUser = {
       ...userAttributes,
       directoryId: directory.id,
-      raw: 'rawAttributes' in body ? body.rawAttributes : body,
+      raw: structuredClone('rawAttributes' in body ? body.rawAttributes : body),
     };
 
     if (!newUser.id) {
@@ -53,6 +52,15 @@ export class DirectoryUsers {
 
     newUser.raw['id'] = newUser.id;
 
+    if (isSCIMEnabledProvider(directory.type)) {
+      await this.users.assertUnique(newUser, directory.id);
+    } else {
+      // Google sync already supplies stable unique IDs; retain its indexed
+      // email check rather than scanning the directory for every imported user.
+      const found = await this.users.search(newUser.email, directory.id);
+      if (found.error) return this.respondWithError(found.error);
+      if (found.data?.length) return this.respondWithError({ code: 409, message: 'User already exists' });
+    }
     const { data: user, error } = await this.users.create(newUser);
     if (error || !user) return this.respondWithError(error);
 
@@ -74,12 +82,15 @@ export class DirectoryUsers {
   public async update(directory: Directory, user: User, body: any): Promise<DirectorySyncResponse> {
     const userAttributes = extractStandardUserAttributes(body);
 
-    const { data: updatedUser, error } = await this.users.update(user.id, {
+    const replacement = {
       ...userAttributes,
       id: user.id,
       directoryId: directory.id,
       raw: 'rawAttributes' in body ? body.rawAttributes : body,
-    });
+    };
+    if (isSCIMEnabledProvider(directory.type))
+      await this.users.assertUnique(replacement, directory.id, user.id);
+    const { data: updatedUser, error } = await this.users.update(user.id, replacement);
     if (error || !updatedUser) return this.respondWithError(error);
 
     await sendEvent('user.updated', { directory, user: updatedUser }, this.callback);
@@ -111,11 +122,13 @@ export class DirectoryUsers {
       };
     }
 
-    const { data: updatedUser, error } = await this.users.update(user.id, {
+    const replacement = {
       ...user,
       ...attributes,
-      raw: updateRawUserAttributes(user.raw, rawAttributes),
-    });
+      raw: updateRawUserAttributes(structuredClone(user.raw), rawAttributes),
+    };
+    await this.users.assertUnique(replacement, directory.id, user.id);
+    const { data: updatedUser, error } = await this.users.update(user.id, replacement);
     if (error || !updatedUser) return this.respondWithError(error);
 
     await sendEvent('user.updated', { directory, user: updatedUser }, this.callback);
@@ -138,52 +151,32 @@ export class DirectoryUsers {
     };
   }
 
-  public async getAll(queryParams: {
-    count: number;
-    startIndex: number;
-    filter?: string;
-    directoryId: string;
-  }): Promise<DirectorySyncResponse> {
-    const { startIndex, filter, count, directoryId } = queryParams;
-
-    let users: User[] | null = [];
-    let totalResults = 0;
-
-    if (filter) {
-      // Search users by userName
-      // filter: userName eq "john@example.com"
-      const { data } = await this.users.search(filter.split('eq ')[1].replace(/['"]+/g, ''), directoryId);
-
-      users = data;
-      totalResults = users ? users.length : 0;
-    } else {
-      // Fetch all the existing Users (Paginated)
-      // At this moment, we don't have method to count the database records.
-      const { data: allUsers } = await this.users.getAll({ directoryId });
-      const { data } = await this.users.getAll({ pageOffset: startIndex - 1, pageLimit: count, directoryId });
-
-      users = data;
-      totalResults = allUsers ? allUsers.length : 0;
-    }
+  public async getAll(queryParams: ListQuery & { directoryId: string }): Promise<DirectorySyncResponse> {
+    const {
+      data: users,
+      totalResults,
+      startIndex,
+    } = await this.users.list(queryParams.directoryId, queryParams);
 
     return {
       status: 200,
       data: {
         schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'],
-        startIndex: startIndex ? startIndex : 1,
-        totalResults: totalResults ? totalResults : 0,
-        itemsPerPage: users ? Math.min(users.length, count || users.length) : 0,
-        Resources: users ? users.map((user) => user.raw) : [],
+        startIndex,
+        totalResults,
+        itemsPerPage: users.length,
+        Resources: users.map((user) => user.raw),
       },
     };
   }
 
-  private respondWithError(error: ApiError | null) {
+  private respondWithError(error: ApiError | null, scimType?: string) {
     return {
       status: error ? error.code : 500,
       data: {
         schemas: ['urn:ietf:params:scim:api:messages:2.0:Error'],
         detail: error ? error.message : 'Internal Server Error',
+        ...(scimType ? { scimType } : error?.code === 409 ? { scimType: 'uniqueness' } : {}),
       },
     };
   }
@@ -197,7 +190,10 @@ export class DirectoryUsers {
     try {
       return await scoped.handleScopedRequest(request, callback);
     } catch (error) {
-      return this.respondWithError(apiError(error).error);
+      return this.respondWithError(
+        apiError(error).error,
+        error instanceof JacksonError ? error.internalError : undefined
+      );
     }
   }
 
@@ -274,8 +270,8 @@ export class DirectoryUsers {
         return await this.create(directory, body);
       case 'GET':
         return await this.getAll({
-          count: query.count as number,
-          startIndex: query.startIndex as number,
+          count: query.count,
+          startIndex: query.startIndex,
           filter: query.filter,
           directoryId,
         });
