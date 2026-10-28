@@ -40,7 +40,7 @@ export class Base {
     let cursor = this.cursor;
     const seen = new Set<string>();
     for (let page = 0; page < 1000; page++) {
-      const result = await store.getByIndex({ ...index }, offset, 100, token);
+      const result = await store.getByIndex({ ...index }, offset, 1000, token);
       if (result.pageToken) cursor = true;
       if (cursor) {
         if (result.pageToken && seen.has(result.pageToken)) break;

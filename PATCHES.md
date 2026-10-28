@@ -259,7 +259,8 @@ rebase/release branch. Published tags are never moved.
     retain their directory ID; resource reads and member operations check it.
     Existing records without that field are checked against the original
     directory index and repaired by their next update. Legacy index scans follow
-    the store's pagination, use fresh index objects, and refuse incomplete scans
+    the store's pagination, request up to 1,000 records per page (still capped by
+    the configured database limit), use fresh index objects, and refuse incomplete scans
     after a repeated page/cursor or 1,000 pages (the default 50-record database cap
     permits just under 50,000 records, including the terminal empty page).
     Supplied resource IDs cannot
