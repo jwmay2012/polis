@@ -26,7 +26,13 @@ async function resolve(req: NextApiRequest, res: NextApiResponse) {
   try {
     const { routingController } = await jackson();
     const result = await routingController.lookup(app, req.body.email);
-    if (result.status === 'route') res.json({ required: true, idp_hint: result.connection.clientID });
+    if (result.status === 'route')
+      res.json({
+        required: true,
+        idp_hint: result.connection.clientID,
+        tenant: result.connection.tenant,
+        product: result.connection.product,
+      });
     else if (result.status === 'unavailable')
       res.json({ required: true, idp_hint: null, reason: result.reason });
     else if (result.status === 'none') res.json({ required: false });

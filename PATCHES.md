@@ -301,6 +301,14 @@ rebase/release branch. Published tags are never moved.
     not guaranteed to redeliver a failed notification. Operators must diagnose
     and retry the affected operation. `npm/test/dsync/webhook-delivery.test.ts`.
 
+22. **Return the selected scope from private discovery.** Successful
+    `/api/sso/resolve` responses include the selected connection's `tenant` and
+    `product` alongside its existing ID. Trusted provisioning consumers can verify
+    email authority without management credentials or a second routing table.
+    Unavailable/no-match responses and server-configured application scope are
+    unchanged. Keep the route private; public provider-check consumers project
+    their own limited response. `npm/test/api/discovery-scope.test.ts`.
+
 Invariants the series must keep, and the tests that hold them:
 
 - SCIM filters match the named current attribute, including after a rename;
