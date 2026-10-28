@@ -88,8 +88,7 @@ export class DirectoryUsers {
       directoryId: directory.id,
       raw: 'rawAttributes' in body ? body.rawAttributes : body,
     };
-    if (isSCIMEnabledProvider(directory.type))
-      await this.users.assertUnique(replacement, directory.id, user.id);
+    if (isSCIMEnabledProvider(directory.type)) await this.users.assertUnique(replacement, directory.id, user);
     const { data: updatedUser, error } = await this.users.update(user.id, replacement);
     if (error || !updatedUser) return this.respondWithError(error);
 
@@ -127,7 +126,7 @@ export class DirectoryUsers {
       ...attributes,
       raw: updateRawUserAttributes(structuredClone(user.raw), rawAttributes),
     };
-    await this.users.assertUnique(replacement, directory.id, user.id);
+    await this.users.assertUnique(replacement, directory.id, user);
     const { data: updatedUser, error } = await this.users.update(user.id, replacement);
     if (error || !updatedUser) return this.respondWithError(error);
 

@@ -260,7 +260,9 @@ rebase/release branch. Published tags are never moved.
     Existing records without that field are checked against the original
     directory index and repaired by their next update. Legacy index scans follow
     the store's pagination, use fresh index objects, and refuse incomplete scans
-    after a repeated page/cursor or 1,000 pages. Supplied resource IDs cannot
+    after a repeated page/cursor or 1,000 pages (the default 50-record database cap
+    permits just under 50,000 records, including the terminal empty page).
+    Supplied resource IDs cannot
     overwrite an existing record. No schema migration or application-specific
     provisioning policy is included.
 
@@ -275,12 +277,18 @@ rebase/release branch. Published tags are never moved.
     every matching record, independent of the database page limit. Renames cannot
     leave stale matches or reserve a previous email/group name. Uniqueness checks
     reject an occupied userName/email or group name before writing. As before,
-    these checks do not serialize simultaneous creates.
+    these checks do not serialize simultaneous creates. Status/profile-only user
+    updates skip uniqueness checks when email and userName have not changed.
 
     Queries stream the existing directory index rather than requiring new indexes
     or a reindex of older records. They retain only the requested response page
-    (default100, maximum1,000) plus seen IDs. This is linear in directory size;
-    the existing1,000-page bound returns503 rather than a misleading partial count.
+    (default 100, maximum 1,000) plus seen IDs. This is linear in directory size;
+    an initial query/create cycle is quadratic in total records read. Group
+    uniqueness checks also apply to Google group imports. The existing 1,000-page
+    bound returns 503 rather than a misleading partial count. Attribute-index
+    shortcuts must retain correctness after older writers rename records: these
+    stores retain old index entries, so index coverage alone does not prove that
+    indexed values are current.
     `npm/test/dsync/user-queries.test.ts` runs in memory or against the same optional
     disposable PostgreSQL fixture as patch19. No schema migration.
 

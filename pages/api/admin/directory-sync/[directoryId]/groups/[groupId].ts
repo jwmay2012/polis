@@ -23,7 +23,7 @@ const handleGET = async (req: NextApiRequest, res: NextApiResponse) => {
 
   const { data: group, error: groupError } = await directorySyncController.groups
     .setTenantAndProduct(directory.tenant, directory.product)
-    .get(groupId);
+    .get(groupId, directoryId);
 
   if (groupError) {
     throw new ApiError(groupError.message, groupError.code);

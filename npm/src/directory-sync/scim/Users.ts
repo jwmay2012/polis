@@ -210,13 +210,19 @@ export class Users extends Base {
     );
   }
 
-  public async assertUnique(user: User, directoryId: string, except?: string) {
+  public async assertUnique(user: User, directoryId: string, previous?: User) {
+    if (
+      previous &&
+      equal(user.email, previous.email) &&
+      (user.raw?.userName === previous.raw?.userName || equal(user.raw?.userName, previous.raw?.userName))
+    )
+      return;
     const { totalResults } = await this.directoryPage<User>(
       'users',
       directoryId,
       { count: 0 },
       (entry) =>
-        entry.id !== except &&
+        entry.id !== previous?.id &&
         (equal(entry.email, user.email) ||
           (typeof user.raw?.userName === 'string' && equal(entry.raw?.userName, user.raw.userName)))
     );

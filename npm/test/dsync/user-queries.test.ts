@@ -1,5 +1,7 @@
 import tap from 'tap';
+import sinon from 'sinon';
 import jackson from '../../src';
+import { Users } from '../../src/directory-sync/scim/Users';
 import type { Directory, DirectorySyncRequest } from '../../src/typings';
 import { dsyncOptions } from './test-options';
 
@@ -224,4 +226,70 @@ tap.test('SCIM group lookup, rename and totals use the complete directory', asyn
   const invalid = await groupRequest('GET', undefined, undefined, { filter: 'name co "Team"' });
   t.equal(invalid.status, 400);
   t.equal(invalid.data.scimType, 'invalidFilter');
+});
+
+tap.test('SCIM status and profile updates do not scan the directory', async (t) => {
+  const { sync, directory } = await fixture();
+  const created = await sync.requests.handle(request(directory, 'POST', user('alice')));
+  const scan = sinon.spy(Users.prototype as any, 'directoryPage');
+  t.teardown(() => scan.restore());
+  for (const [path, value] of [
+    ['active', false],
+    ['name.givenName', 'Updated'],
+  ] as const) {
+    t.equal(
+      (
+        await sync.requests.handle(
+          request(
+            directory,
+            'PATCH',
+            {
+              Operations: [{ op: 'replace', path, value }],
+            },
+            created.data.id
+          )
+        )
+      ).status,
+      200
+    );
+  }
+  t.equal(
+    (
+      await sync.requests.handle(
+        request(directory, 'PUT', { ...user('alice'), active: false }, created.data.id)
+      )
+    ).status,
+    200
+  );
+  t.equal(scan.callCount, 0, 'unchanged identifiers skip the uniqueness scan');
+  t.equal(
+    (await sync.requests.handle(request(directory, 'PUT', user('renamed'), created.data.id))).status,
+    200
+  );
+  t.ok(scan.called, 'a rename still checks for conflicting identifiers');
+});
+
+tap.test('SCIM filters still find a record renamed by an older writer', async (t) => {
+  const { sync, directory } = await fixture();
+  const created = await sync.requests.handle(request(directory, 'POST', user('alice')));
+  const store = sync.users.setTenantAndProduct(directory.tenant, directory.product).store('users');
+  const saved = await store.get(created.data.id);
+  await store.put(saved.id, {
+    ...saved,
+    email: 'legacy@example.test',
+    raw: {
+      ...saved.raw,
+      userName: 'legacy.login',
+      externalId: 'legacy-external',
+      emails: [{ value: 'legacy@example.test' }],
+    },
+  });
+  for (const filter of [
+    'userName eq "legacy.login"',
+    'externalId eq "legacy-external"',
+    'emails.value eq "legacy@example.test"',
+  ]) {
+    const result = await sync.requests.handle(request(directory, 'GET', undefined, undefined, { filter }));
+    t.equal(result.data.totalResults, 1, filter);
+  }
 });
