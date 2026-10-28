@@ -3,6 +3,7 @@ import { apiError, JacksonError } from '../../controller/error';
 import { Base } from './Base';
 import { keyFromParts } from '../../db/utils';
 import { indexNames } from './utils';
+import { equal, equalityFilters, type ListQuery } from './query';
 
 export class Users extends Base {
   constructor({ db, cursor }: { db: DatabaseStore; cursor?: boolean }) {
@@ -137,7 +138,15 @@ export class Users extends Base {
         directoryId: saved.data.directoryId || user.directoryId,
         raw,
       };
-      await this.store('users').put(id, updatedUser);
+      const indexes = updatedUser.directoryId
+        ? [
+            {
+              name: indexNames.directoryIdUsername,
+              value: keyFromParts(updatedUser.directoryId, updatedUser.email),
+            },
+          ]
+        : [];
+      await this.store('users').put(id, updatedUser, ...indexes);
       return { data: updatedUser, error: null };
     } catch (err: any) {
       return apiError(err);
@@ -161,18 +170,63 @@ export class Users extends Base {
     }
   }
 
-  // Search users by userName
+  // The management API's existing search argument is an email address.
   public async search(userName: string, directoryId: string): Promise<Response<User[]>> {
     try {
-      const { data: users } = await this.store('users').getByIndex({
+      const users: User[] = [];
+      for await (const user of this.indexRecords(this.store('users'), {
         name: indexNames.directoryIdUsername,
         value: keyFromParts(directoryId, userName),
-      });
+      })) {
+        if ((!user.directoryId || user.directoryId === directoryId) && equal(user.email, userName))
+          users.push(user);
+      }
 
       return { data: users, error: null };
     } catch (err: any) {
       return apiError(err);
     }
+  }
+
+  public async list(directoryId: string, query: ListQuery) {
+    const filters = equalityFilters(query.filter, [
+      'username',
+      'externalid',
+      'emails.value',
+      'emails[typeeq"work"].value',
+    ]);
+    return this.directoryPage<User>('users', directoryId, query, (user) =>
+      filters.every(({ attribute, value }) => {
+        if (attribute === 'username') return equal(user.raw?.userName, value);
+        if (attribute === 'externalid') return equal(user.raw?.externalId, value, true);
+        return (
+          Array.isArray(user.raw?.emails) &&
+          user.raw.emails.some(
+            (email) =>
+              equal(email.value, value) && (attribute === 'emails.value' || equal(email.type, 'work'))
+          )
+        );
+      })
+    );
+  }
+
+  public async assertUnique(user: User, directoryId: string, previous?: User) {
+    if (
+      previous &&
+      equal(user.email, previous.email) &&
+      (user.raw?.userName === previous.raw?.userName || equal(user.raw?.userName, previous.raw?.userName))
+    )
+      return;
+    const { totalResults } = await this.directoryPage<User>(
+      'users',
+      directoryId,
+      { count: 0 },
+      (entry) =>
+        entry.id !== previous?.id &&
+        (equal(entry.email, user.email) ||
+          (typeof user.raw?.userName === 'string' && equal(entry.raw?.userName, user.raw.userName)))
+    );
+    if (totalResults) throw new JacksonError('User already exists.', 409);
   }
 
   /**

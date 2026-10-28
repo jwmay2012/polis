@@ -117,6 +117,15 @@ export const handleEventCallback = async ({
       await sendPayloadToWebhook(directory.webhook, event, opts.dsync?.debugWebhooks, opts.logger);
     } catch (err: any) {
       status = err.response ? err.response.status : 500;
+      opts.logger.error('Directory sync webhook delivery failed.', {
+        directory_id: directoryId,
+        tenant,
+        product,
+        event: event.event,
+        resource_id: event.data.id,
+        status_code: status,
+        attempts: (err.config?.__retryCount || 0) + 1,
+      });
     }
 
     if (directory.log_webhook_events) {

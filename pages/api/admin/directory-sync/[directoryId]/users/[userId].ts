@@ -23,7 +23,7 @@ const handleGET = async (req: NextApiRequest, res: NextApiResponse) => {
 
   const { data: user, error: userError } = await directorySyncController.users
     .setTenantAndProduct(directory.tenant, directory.product)
-    .get(userId);
+    .get(userId, directoryId);
 
   if (userError) {
     throw new ApiError(userError.message, userError.code);

@@ -1,6 +1,7 @@
 import type { Storable, DB, Index } from '../../typings';
 import { storeNamespacePrefix } from '../../controller/utils';
 import { JacksonError } from '../../controller/error';
+import { pagination, type ListQuery } from './query';
 
 export class Base {
   protected db: DB;
@@ -39,7 +40,7 @@ export class Base {
     let cursor = this.cursor;
     const seen = new Set<string>();
     for (let page = 0; page < 1000; page++) {
-      const result = await store.getByIndex({ ...index }, offset, 100, token);
+      const result = await store.getByIndex({ ...index }, offset, 1000, token);
       if (result.pageToken) cursor = true;
       if (cursor) {
         if (result.pageToken && seen.has(result.pageToken)) break;
@@ -76,5 +77,30 @@ export class Base {
       if (entry.id === record.id) return true;
     }
     return false;
+  }
+
+  protected async directoryPage<T extends { id: string; directoryId?: string }>(
+    type: 'users' | 'groups',
+    directoryId: string,
+    query: ListQuery,
+    matches: (record: T) => boolean = () => true
+  ) {
+    const { count, startIndex } = pagination(query);
+    const data: T[] = [];
+    let totalResults = 0;
+    const seen = new Set<string>();
+    // Read current records from the existing directory index. Attribute indexes
+    // are add-only, and older records lack indexes for userName/externalId.
+    for await (const record of this.indexRecords(this.store(type), {
+      name: 'directoryId',
+      value: directoryId,
+    })) {
+      if ((record.directoryId && record.directoryId !== directoryId) || seen.has(record.id)) continue;
+      seen.add(record.id);
+      if (!matches(record)) continue;
+      totalResults++;
+      if (totalResults >= startIndex && data.length < count) data.push(record);
+    }
+    return { data, totalResults, startIndex };
   }
 }

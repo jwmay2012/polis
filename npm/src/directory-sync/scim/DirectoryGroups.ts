@@ -18,6 +18,7 @@ import { parseGroupOperation } from './utils';
 import { sendEvent } from '../utils';
 import { isConnectionActive } from '../../controller/utils';
 import { apiError, JacksonError } from '../../controller/error';
+import type { ListQuery } from './query';
 
 interface DirectoryGroupsParams {
   directories: IDirectoryConfig;
@@ -54,18 +55,12 @@ export class DirectoryGroups {
   public async create(directory: Directory, body: any): Promise<DirectorySyncResponse> {
     const { displayName, groupId } = body as { displayName: string; groupId?: string };
 
-    // Check if the group already exists
-    const { data: groups } = await this.groups.search(displayName, directory.id);
-
-    if (groups && groups.length > 0) {
-      return this.respondWithError({ code: 409, message: 'Group already exists' });
-    }
-
+    await this.groups.assertUnique(displayName, directory.id);
     const { data: group, error } = await this.groups.create({
       directoryId: directory.id,
       name: displayName,
       id: groupId,
-      raw: 'rawAttributes' in body ? body.rawAttributes : { ...body, members: [] },
+      raw: structuredClone('rawAttributes' in body ? body.rawAttributes : { ...body, members: [] }),
     });
     if (error || !group) return this.respondWithError(error);
 
@@ -114,27 +109,14 @@ export class DirectoryGroups {
     };
   }
 
-  public async getAll(queryParams: {
-    filter?: string;
-    directoryId: string;
-    includeMembers?: boolean;
-  }): Promise<DirectorySyncResponse> {
-    const { filter, directoryId, includeMembers = false } = queryParams;
-
-    let groups: Group[] | null = [];
-
-    if (filter) {
-      // Filter by group displayName
-      // filter: displayName eq "Developer"
-      const { data } = await this.groups.search(filter.split('eq ')[1].replace(/['"]+/g, ''), directoryId);
-
-      groups = data;
-    } else {
-      // Fetch all the existing group
-      const { data } = await this.groups.getAll({ directoryId, pageOffset: undefined, pageLimit: undefined });
-
-      groups = data;
+  public async getAll(
+    queryParams: ListQuery & {
+      directoryId: string;
+      includeMembers?: boolean;
     }
+  ): Promise<DirectorySyncResponse> {
+    const { directoryId, includeMembers = false } = queryParams;
+    const { data: groups, totalResults, startIndex } = await this.groups.list(directoryId, queryParams);
 
     // By default the stored raw attributes carry an empty members list, because
     // memberships are stored separately from the group. Only enrich each group
@@ -159,9 +141,9 @@ export class DirectoryGroups {
       status: 200,
       data: {
         schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'],
-        totalResults: groups ? groups.length : 0,
-        itemsPerPage: groups ? groups.length : 0,
-        startIndex: 1,
+        totalResults,
+        itemsPerPage: groups.length,
+        startIndex,
         Resources: resources,
       },
     };
@@ -242,6 +224,7 @@ export class DirectoryGroups {
 
   // Update group displayName
   public async updateDisplayName(directory: Directory, group: Group, body: any): Promise<Group> {
+    await this.groups.assertUnique(body.displayName, directory.id, group.id);
     const { data: updatedGroup, error } = await this.groups.update(group.id, {
       name: body.displayName,
       directoryId: directory.id,
@@ -249,7 +232,7 @@ export class DirectoryGroups {
     });
 
     if (error || !updatedGroup) {
-      throw error;
+      throw new JacksonError(error?.message || 'Could not update group.', error?.code || 500);
     }
 
     await sendEvent('group.updated', { directory, group: updatedGroup }, this.callback);
@@ -398,12 +381,13 @@ export class DirectoryGroups {
     throw new JacksonError(result.error?.message || 'User not found.', result.error?.code || 404);
   }
 
-  private respondWithError(error: ApiError | null) {
+  private respondWithError(error: ApiError | null, scimType?: string) {
     return {
       status: error ? error.code : 500,
       data: {
         schemas: ['urn:ietf:params:scim:api:messages:2.0:Error'],
         detail: error ? error.message : 'Internal Server Error',
+        ...(scimType ? { scimType } : error?.code === 409 ? { scimType: 'uniqueness' } : {}),
       },
     };
   }
@@ -417,7 +401,10 @@ export class DirectoryGroups {
     try {
       return await scoped.handleScopedRequest(request, callback);
     } catch (error) {
-      return this.respondWithError(apiError(error).error);
+      return this.respondWithError(
+        apiError(error).error,
+        error instanceof JacksonError ? error.internalError : undefined
+      );
     }
   }
 
@@ -494,6 +481,8 @@ export class DirectoryGroups {
           filter: query.filter,
           directoryId,
           includeMembers: query.includeMembers,
+          count: query.count,
+          startIndex: query.startIndex,
         });
     }
 
