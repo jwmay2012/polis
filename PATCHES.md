@@ -301,6 +301,21 @@ rebase/release branch. Published tags are never moved.
     not guaranteed to redeliver a failed notification. Operators must diagnose
     and retry the affected operation. `npm/test/dsync/webhook-delivery.test.ts`.
 
+22. **Scoped private lookups for directory provisioning.** Successful
+    `/api/sso/resolve` responses include the selected connection's `tenant` and
+    `product` alongside its existing ID. Trusted provisioning consumers can verify
+    email authority without management credentials or a second routing table.
+    Unavailable/no-match responses and server-configured application scope are
+    unchanged. Keep the route private; public provider-check consumers project
+    their own limited response. `/api/sso/directory-user` reads the current person
+    from one directory. It requires a fresh HMAC signature over the exact request
+    bytes using that directory's webhook secret and the `polis-dsync-read:v1.`
+    purpose prefix, enforces directory ownership,
+    returns only lifecycle/profile fields, and distinguishes absence from a store
+    failure. The route remains outside public ingress; signing headers are redacted.
+    Consumers can re-read state instead of ordering snapshots by delivery time.
+    `npm/test/api/discovery-scope.test.ts`, `npm/test/api/directory-user.test.ts`.
+
 Invariants the series must keep, and the tests that hold them:
 
 - SCIM filters match the named current attribute, including after a rename;

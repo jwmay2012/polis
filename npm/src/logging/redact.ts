@@ -7,6 +7,8 @@ const secretFields = new Set(
   )
 );
 const urlFields = /(?:url|uri|location|referer|referrer)$/i;
+secretFields.add('orypolissignature');
+secretFields.add('boxyhqsignature');
 
 export function redactText(text: string, secrets: Secrets): string {
   if (text === '[REDACTED]') return text;

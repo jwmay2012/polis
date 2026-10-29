@@ -21,6 +21,7 @@ const unAuthenticatedApiRoutes = [
   '/api/branding',
   '/api/error',
   '/api/sso/resolve',
+  '/api/sso/directory-user', // Authenticated by the directory webhook signature in the handler.
 ];
 
 export async function proxy(req: NextRequest) {
