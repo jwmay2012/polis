@@ -44,7 +44,7 @@ async function readUser(req: NextApiRequest, res: NextApiResponse) {
   if (error && error.code !== 404) throw new ApiError('Directory is unavailable.', 503);
   if (!directory?.webhook.secret) throw new ApiError('Unauthorized', 401);
   const expected = createHmac('sha256', directory.webhook.secret)
-    .update(signature[1] + '.')
+    .update('polis-dsync-read:v1.' + signature[1] + '.')
     .update(raw)
     .digest();
   if (!timingSafeEqual(expected, Buffer.from(signature[2], 'hex'))) throw new ApiError('Unauthorized', 401);

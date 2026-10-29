@@ -309,7 +309,8 @@ rebase/release branch. Published tags are never moved.
     unchanged. Keep the route private; public provider-check consumers project
     their own limited response. `/api/sso/directory-user` reads the current person
     from one directory. It requires a fresh HMAC signature over the exact request
-    bytes using that directory's webhook secret, enforces directory ownership,
+    bytes using that directory's webhook secret and the `polis-dsync-read:v1.`
+    purpose prefix, enforces directory ownership,
     returns only lifecycle/profile fields, and distinguishes absence from a store
     failure. The route remains outside public ingress; signing headers are redacted.
     Consumers can re-read state instead of ordering snapshots by delivery time.

@@ -60,11 +60,12 @@ tap.test(
       body = { directory_id: directory.id, user_id: 'person' },
       key = 'fixture-directory-key',
       timestamp = Date.now(),
-      tamper = false
+      tamper = false,
+      purpose = 'polis-dsync-read:v1.'
     ) => {
       const raw = JSON.stringify(body);
       const signature = createHmac('sha256', key)
-        .update(timestamp + '.' + raw)
+        .update(purpose + timestamp + '.' + raw)
         .digest('hex');
       const req = Object.assign(Readable.from([Buffer.from(raw + (tamper ? ' ' : ''))]), {
         method: 'POST',
@@ -93,6 +94,10 @@ tap.test(
     });
     t.notMatch(JSON.stringify(response), /unselected-value/);
     await t.rejects(read(body, 'wrong-key'), { statusCode: 401, message: 'Unauthorized' });
+    await t.rejects(read(body, undefined, Date.now(), false, ''), {
+      statusCode: 401,
+      message: 'Unauthorized',
+    });
     await t.rejects(read(body, undefined, Date.now() - 301000), { statusCode: 401, message: 'Unauthorized' });
     await t.rejects(read(body, undefined, Date.now(), true), { statusCode: 401, message: 'Unauthorized' });
     await t.rejects(read({ ...body, tenant: 'other' } as any), { statusCode: 400, message: /directory ID/ });
